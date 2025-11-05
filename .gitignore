@@ -1,27 +1,86 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
-# dependencies
+# -----------------------------
+# Package manager / dependencies
+# -----------------------------
 /node_modules
-
-# next.js
-/.next/
-/out/
-
-# production
-/build
-
-# debug
+# ログ類
+*.log
+logs/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files
-.env*
+# -----------------------------
+# Next.js build artifacts
+# -----------------------------
+/.next
+/next.config.mjs.timestamp-*
+/out
+# Next.js のキャッシュ
+/.next/cache
+# Turbopack/Turbo
+/.turbo
+/.cache
 
-# vercel
+# -----------------------------
+# Build / Production
+# -----------------------------
+/build
+/dist
+/.swc
+
+# -----------------------------
+# Env files（秘匿：必ずコミットしない）
+# -----------------------------
+.env
+.env.*
+!.env.example        # ひな形はコミット可（APIキーは空で）
+
+# -----------------------------
+# Vercel / Deploy
+# -----------------------------
 .vercel
 
-# typescript
+# -----------------------------
+# TypeScript
+# -----------------------------
 *.tsbuildinfo
 next-env.d.ts
+# ESLint/TS キャッシュ（任意）
+.eslintcache
+
+# -----------------------------
+# Prisma / DB
+# -----------------------------
+# Prisma の生成物。migrations は必ずコミットすること！
+.prisma/
+# SQLite をローカル検証で使う場合のみ（PostgreSQL運用なら不要）
+/prisma/dev.db
+/prisma/dev.db-journal
+
+# -----------------------------
+# Supabase CLI（設定ディレクトリは基本コミット、テンポラリは除外）
+# -----------------------------
+/supabase/.temp
+/supabase/.branches
+/supabase/.cache
+
+# -----------------------------
+# Coverage / Test artifacts（任意）
+# -----------------------------
+/coverage
+/.nyc_output
+/.jest-cache
+/.jest
+
+# -----------------------------
+# OS / Editor junk
+# -----------------------------
+.DS_Store
+Thumbs.db
+*.swp
+*~
+.idea/
+.vscode/

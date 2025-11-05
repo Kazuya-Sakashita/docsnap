@@ -6,20 +6,57 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
-// ユーザーモデル
+// =================== Enums ===================
+// ※ 各 enum の { } 内は列挙子のみ。コメント/空行/別宣言を入れないこと。
+enum AccountType {
+  PERSONAL
+  BUSINESS
+}
+
+enum ReceiptType {
+  RECEIPT
+  INVOICE
+}
+
+enum ReceiptStatus {
+  READY
+  PROCESSING
+  ERROR
+  DUPLICATE
+}
+
+enum Currency {
+  JPY
+  USD
+  EUR
+  OTHER
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  TRANSFER
+  OTHER
+}
+
+// =================== Models ===================
+
+// ユーザー
 model User {
-  id          String   @id @default(cuid())
-  email       String   @unique
-  password    String
-  name        String?
-  accountType String   @default("PERSONAL") // PERSONAL or BUSINESS
-  companyName String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id           String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email        String      @unique
+  passwordHash String
+  name         String?
+  accountType  AccountType @default(PERSONAL)
+  companyName  String?
+  createdAt    DateTime    @default(now()) @db.Timestamptz(6)
+  updatedAt    DateTime    @updatedAt @db.Timestamptz(6)
+  deletedAt    DateTime?   @db.Timestamptz(6)
 
   receipts   Receipt[]
   categories Category[]
@@ -27,63 +64,66 @@ model User {
   @@map("users")
 }
 
-// レシート/領収書モデル
+// レシート/領収書
 model Receipt {
-  id           String   @id @default(cuid())
-  userId       String
-  type         String   @default("RECEIPT") // RECEIPT or INVOICE
+  id           String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId       String        @db.Uuid
+  type         ReceiptType   @default(RECEIPT)
   title        String
   storeName    String
-  purchaseDate DateTime
-  currency     String   @default("JPY")
-  subtotal     Decimal  @db.Decimal(10, 2)
-  tax          Decimal  @db.Decimal(10, 2)
-  total        Decimal  @db.Decimal(10, 2)
-  memo         String?  @db.Text
-  status       String   @default("READY") // READY, PROCESSING, ERROR, DUPLICATE
-  
+  purchaseDate DateTime      @db.Timestamptz(6)
+  currency     Currency      @default(JPY)
+  subtotal     Decimal       @db.Decimal(14, 2)
+  tax          Decimal       @db.Decimal(14, 2)
+  total        Decimal       @db.Decimal(14, 2)
+  memo         String?       @db.Text
+  status       ReceiptStatus @default(READY)
+
   // OCR関連
   confidenceScore Float?
   imageUrl        String?
   ocrData         Json?
-  
+
   // カテゴリ
-  categoryId String?
-  
+  categoryId String? @db.Uuid
+
   // 領収書固有フィールド
   invoiceNumber      String?
-  recipientName      String? // 宛名
-  purpose            String? // 但書
-  registrationNumber String? // 登録番号（インボイス制度対応）
-  issuerAddress      String? // 発行者住所
-  paymentDueDate     DateTime? // 支払期日
-  paymentMethod      String? // 支払方法
-  
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  recipientName      String?
+  purpose            String?
+  registrationNumber String?
+  issuerAddress      String?
+  paymentDueDate     DateTime?      @db.Timestamptz(6)
+  paymentMethod      PaymentMethod?
+  taxRate            Decimal?       @db.Decimal(5, 2) // 例: 10.00 (%)
 
-  user     User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  category Category?      @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  createdAt DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @db.Timestamptz(6)
+  deletedAt DateTime? @db.Timestamptz(6)
+
+  user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category Category?     @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   items    ReceiptItem[]
 
   @@index([userId])
   @@index([categoryId])
   @@index([purchaseDate])
-  @@index([status])
+  @@index([status]) // enumでもOK（書式崩れが直ると有効になります）
   @@map("receipts")
 }
 
-// レシート明細モデル
+// 明細
 model ReceiptItem {
-  id        String  @id @default(cuid())
-  receiptId String
+  id        String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  receiptId String  @db.Uuid
   name      String
   quantity  Int     @default(1)
-  unitPrice Decimal @db.Decimal(10, 2)
-  amount    Decimal @db.Decimal(10, 2)
-  
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  unitPrice Decimal @db.Decimal(14, 2)
+  amount    Decimal @db.Decimal(14, 2)
+
+  createdAt DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @db.Timestamptz(6)
+  deletedAt DateTime? @db.Timestamptz(6)
 
   receipt Receipt @relation(fields: [receiptId], references: [id], onDelete: Cascade)
 
@@ -91,15 +131,17 @@ model ReceiptItem {
   @@map("receipt_items")
 }
 
-// カテゴリモデル
+// カテゴリ
 model Category {
-  id         String   @id @default(cuid())
-  userId     String
+  id         String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId     String  @db.Uuid
   name       String
   color      String?
-  usageCount Int      @default(0)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  usageCount Int     @default(0)
+
+  createdAt DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @db.Timestamptz(6)
+  deletedAt DateTime? @db.Timestamptz(6)
 
   user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   receipts Receipt[]
