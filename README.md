@@ -98,7 +98,7 @@ npm run db:seed
 
 ## プロジェクト構造
 
-\`\`\`
+```
 ├── src/
 │   ├── app/                    # Next.js App Router
 │   │   ├── (auth)/            # 認証関連ページ
@@ -121,7 +121,7 @@ npm run db:seed
 │   ├── schema.prisma         # データベーススキーマ
 │   └── seed.ts               # シードデータ
 └── public/                    # 静的ファイル
-\`\`\`
+```
 
 ## ライセンス
 
