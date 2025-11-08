@@ -1,86 +1,56 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
-
-# -----------------------------
-# Package manager / dependencies
-# -----------------------------
-/node_modules
-# ログ類
+# --- Node / Next.js ---
+node_modules/
+.next/
+.next.cache/
+.turbo/
+out/
 *.log
-logs/
 npm-debug.log*
-yarn-debug.log*
 yarn-error.log*
-.pnpm-debug.log*
 
-# -----------------------------
-# Next.js build artifacts
-# -----------------------------
-/.next
-/next.config.mjs.timestamp-*
-/out
-# Next.js のキャッシュ
-/.next/cache
-# Turbopack/Turbo
-/.turbo
-/.cache
-
-# -----------------------------
-# Build / Production
-# -----------------------------
-/build
-/dist
-/.swc
-
-# -----------------------------
-# Env files（秘匿：必ずコミットしない）
-# -----------------------------
-.env
-.env.*
-!.env.example        # ひな形はコミット可（APIキーは空で）
-
-# -----------------------------
-# Vercel / Deploy
-# -----------------------------
-.vercel
-
-# -----------------------------
-# TypeScript
-# -----------------------------
+# TypeScript build info
 *.tsbuildinfo
-next-env.d.ts
-# ESLint/TS キャッシュ（任意）
-.eslintcache
 
-# -----------------------------
-# Prisma / DB
-# -----------------------------
-# Prisma の生成物。migrations は必ずコミットすること！
-.prisma/
-# SQLite をローカル検証で使う場合のみ（PostgreSQL運用なら不要）
-/prisma/dev.db
-/prisma/dev.db-journal
+# --- Env / Secrets ---
+.env
+.env.*        # .env.local, .env.development など含む
+!.env.example # サンプルはコミット
 
-# -----------------------------
-# Supabase CLI（設定ディレクトリは基本コミット、テンポラリは除外）
-# -----------------------------
-/supabase/.temp
-/supabase/.branches
-/supabase/.cache
-
-# -----------------------------
-# Coverage / Test artifacts（任意）
-# -----------------------------
-/coverage
-/.nyc_output
-/.jest-cache
-/.jest
-
-# -----------------------------
-# OS / Editor junk
-# -----------------------------
+# --- OS / Editor ---
 .DS_Store
 Thumbs.db
-*.swp
-*~
 .idea/
-.vscode/
+.vscode/**        # VSCode設定をコミットしない場合
+!.vscode/settings.json
+!.vscode/extensions.json
+
+# ESLint / その他キャッシュ
+.eslintcache
+.stylelintcache
+.cspellcache
+cspell-cache/
+
+# --- Prisma ---
+# 生成物（生成先を作っているなら ignore 推奨）
+prisma/generated/
+
+# マイグレーションは原則コミット（履歴）
+# prisma/migrations/  ← 追跡したいので ignore しない
+
+# --- Testing / Coverage ---
+coverage/
+.nyc_output/
+
+# --- Build / Bundler その他 ---
+dist/
+build/
+
+# --- Vercel / Deploy ---
+.vercel/
+
+# --- Misc ---
+# 一時ファイル・ローカル用
+tmp/
+temp/
+*.local.*
+.env.local

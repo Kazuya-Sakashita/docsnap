@@ -1,0 +1,11 @@
+{
+  "semi": false,
+  "singleQuote": false,
+  "printWidth": 100,
+  "tabWidth": 2,
+  "trailingComma": "all",
+  "plugins": ["prettier-plugin-tailwindcss", "prettier-plugin-prisma"],
+  "overrides": [
+    { "files": "*.prisma", "options": { "parser": "prisma-parse" } }
+  ]
+}
