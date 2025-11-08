@@ -12,7 +12,6 @@ datasource db {
 }
 
 // =================== Enums ===================
-// ※ 各 enum の { } 内は列挙子のみ。コメント/空行/別宣言を入れないこと。
 enum AccountType {
   PERSONAL
   BUSINESS
@@ -48,15 +47,15 @@ enum PaymentMethod {
 
 // ユーザー
 model User {
-  id           String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  email        String      @unique
-  passwordHash String
-  name         String?
-  accountType  AccountType @default(PERSONAL)
-  companyName  String?
-  createdAt    DateTime    @default(now()) @db.Timestamptz(6)
-  updatedAt    DateTime    @updatedAt @db.Timestamptz(6)
-  deletedAt    DateTime?   @db.Timestamptz(6)
+  id             String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  supabaseUserId String      @unique // ★ 追加（必須）
+  email          String      @unique
+  name           String?
+  accountType    AccountType @default(PERSONAL)
+  companyName    String?
+  createdAt      DateTime    @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime    @updatedAt @db.Timestamptz(6)
+  deletedAt      DateTime?   @db.Timestamptz(6)
 
   receipts   Receipt[]
   categories Category[]
@@ -95,7 +94,7 @@ model Receipt {
   issuerAddress      String?
   paymentDueDate     DateTime?      @db.Timestamptz(6)
   paymentMethod      PaymentMethod?
-  taxRate            Decimal?       @db.Decimal(5, 2) // 例: 10.00 (%)
+  taxRate            Decimal?       @db.Decimal(5, 2)
 
   createdAt DateTime  @default(now()) @db.Timestamptz(6)
   updatedAt DateTime  @updatedAt @db.Timestamptz(6)
@@ -108,7 +107,7 @@ model Receipt {
   @@index([userId])
   @@index([categoryId])
   @@index([purchaseDate])
-  @@index([status]) // enumでもOK（書式崩れが直ると有効になります）
+  @@index([status])
   @@map("receipts")
 }
 
