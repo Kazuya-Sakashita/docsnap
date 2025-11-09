@@ -16,26 +16,26 @@ export function SummaryCards() {
   return (
     <div className="grid gap-4 md:grid-cols-3">
       {/* 今月の合計 */}
-      <Card className="relative overflow-hidden border-blue-200 bg-gradient-to-br from-blue-50 to-white shadow-soft">
-        <div className="absolute -right-8 -top-8 h-32 w-32 rounded-full bg-primary/5" />
+      <Card className="shadow-soft relative overflow-hidden border-blue-200 bg-linear-to-br from-blue-50 to-white">
+        <div className="bg-primary/5 absolute -top-8 -right-8 h-32 w-32 rounded-full" />
         <CardContent className="relative p-6">
           <div className="mb-2 flex items-center gap-2">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
-              <DollarSign className="h-5 w-5 text-primary" />
+            <div className="bg-primary/10 flex h-10 w-10 items-center justify-center rounded-lg">
+              <DollarSign className="text-primary h-5 w-5" />
             </div>
             <p className="text-sm font-medium text-slate-600">今月の合計</p>
           </div>
           <p className="mb-1 text-3xl font-bold text-slate-900">{formatCurrency(summary.total)}</p>
           <p className="flex items-center gap-1 text-sm text-slate-600">
-            <TrendingUp className="h-4 w-4 text-success" />
-            前月比 <span className="font-semibold text-success">+{summary.trend}%</span>
+            <TrendingUp className="text-success h-4 w-4" />
+            前月比 <span className="text-success font-semibold">+{summary.trend}%</span>
           </p>
         </CardContent>
       </Card>
 
       {/* レシート件数 */}
-      <Card className="relative overflow-hidden border-blue-200 bg-gradient-to-br from-indigo-50 to-white shadow-soft">
-        <div className="absolute -right-8 -top-8 h-32 w-32 rounded-full bg-indigo-500/5" />
+      <Card className="shadow-soft relative overflow-hidden border-blue-200 bg-linear-to-br from-indigo-50 to-white">
+        <div className="absolute -top-8 -right-8 h-32 w-32 rounded-full bg-indigo-500/5" />
         <CardContent className="relative p-6">
           <div className="mb-2 flex items-center gap-2">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-indigo-500/10">
@@ -49,8 +49,8 @@ export function SummaryCards() {
       </Card>
 
       {/* 平均単価 */}
-      <Card className="relative overflow-hidden border-blue-200 bg-gradient-to-br from-sky-50 to-white shadow-soft">
-        <div className="absolute -right-8 -top-8 h-32 w-32 rounded-full bg-sky-500/5" />
+      <Card className="shadow-soft relative overflow-hidden border-blue-200 bg-linear-to-br from-sky-50 to-white">
+        <div className="absolute -top-8 -right-8 h-32 w-32 rounded-full bg-sky-500/5" />
         <CardContent className="relative p-6">
           <div className="mb-2 flex items-center gap-2">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-sky-500/10">
@@ -58,7 +58,9 @@ export function SummaryCards() {
             </div>
             <p className="text-sm font-medium text-slate-600">平均単価</p>
           </div>
-          <p className="mb-1 text-3xl font-bold text-slate-900">{formatCurrency(summary.average)}</p>
+          <p className="mb-1 text-3xl font-bold text-slate-900">
+            {formatCurrency(summary.average)}
+          </p>
           <p className="text-sm text-slate-600">1件あたり</p>
         </CardContent>
       </Card>
