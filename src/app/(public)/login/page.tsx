@@ -1,7 +1,9 @@
+// src/app/(public)/login/page.tsx
 "use client"
 
 import { useState } from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { Receipt } from "lucide-react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
@@ -12,11 +14,18 @@ import { useToast } from "@/hooks/use-toast"
 import { FormField } from "@/components/forms/form-field"
 import { PasswordInput } from "@/components/forms/password-input"
 import { loginSchema, type LoginFormData } from "@/lib/validations/auth"
+import { useUser } from "@/hooks/useUser"
+
+type LoginApiOk = { ok: true; user?: { id: string; email: string | null } }
+type LoginApiErr = { ok: false; error: string }
+type LoginApiResponse = LoginApiOk | LoginApiErr
 
 export default function LoginPage() {
+  const router = useRouter()
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
   const { toast } = useToast()
+  const { mutate } = useUser()
 
   const form = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
@@ -26,19 +35,51 @@ export default function LoginPage() {
     },
   })
 
-  const handleLogin = async (_data: LoginFormData) => {
+  const handleLogin = async (data: LoginFormData) => {
     setError("")
     setIsLoading(true)
-
-    // TODO: 実際の認証処理
-    setTimeout(() => {
-      toast({
-        title: "ログイン成功",
-        description: "ダッシュボードに移動します",
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        // same-origin なのでクッキー受け取りはデフォルトでOK
+        body: JSON.stringify(data),
       })
+
+      let json: LoginApiResponse | null = null
+      try {
+        json = (await res.json()) as LoginApiResponse
+      } catch {
+        // JSONでない応答の可能性もあるため握りつぶす
+      }
+
+      const isOk = res.ok && json !== null && json.ok === true
+
+      if (!isOk) {
+        const msg =
+          (json && json.ok === false && json.error) ||
+          (res.status === 401
+            ? "メールアドレスまたはパスワードが正しくありません"
+            : "ログインに失敗しました")
+        setError(msg)
+        return
+      }
+
+      // SWRのユーザー情報を即時更新（/api/session を再フェッチ）
+      await mutate()
+
+      toast({
+        title: "ログインしました",
+        description: "ダッシュボードへ移動します",
+      })
+
+      // 遷移先は必要に応じて変更（例: "/dashboard"）
+      router.replace("/")
+    } catch (_e) {
+      setError("ネットワークエラーが発生しました。時間をおいて再度お試しください")
+    } finally {
       setIsLoading(false)
-      // window.location.href = '/'
-    }, 1000)
+    }
   }
 
   return (
@@ -73,6 +114,7 @@ export default function LoginPage() {
                 placeholder="example@email.com"
                 {...form.register("email")}
                 autoComplete="email"
+                disabled={isLoading}
               />
             </FormField>
 
@@ -82,6 +124,7 @@ export default function LoginPage() {
                 placeholder="••••••••"
                 {...form.register("password")}
                 autoComplete="current-password"
+                disabled={isLoading}
               />
             </FormField>
 
