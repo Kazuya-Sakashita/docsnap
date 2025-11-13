@@ -4,38 +4,46 @@ node_modules/
 .next.cache/
 .turbo/
 out/
+.swc/                 # SWC一時キャッシュ
 *.log
 npm-debug.log*
 yarn-error.log*
-
-# TypeScript build info
+pnpm-debug.log*
 *.tsbuildinfo
 
 # --- Env / Secrets ---
 .env
-.env.*        # .env.local, .env.development など含む
-!.env.example # サンプルはコミット
+.env.*                # .env.local, .env.development など含む
+!.env.example         # サンプルはコミット
+
+# 追加：秘密鍵/サービスアカウントの漏れ防止
+*.pem
+*.key
+*.p12
+*secret*.json
+*service-account*.json
+google-credentials.json
+gcp-*.json
 
 # --- OS / Editor ---
 .DS_Store
 Thumbs.db
 .idea/
-.vscode/**        # VSCode設定をコミットしない場合
+.vscode/**            # VSCode設定をコミットしない場合
 !.vscode/settings.json
 !.vscode/extensions.json
 
-# ESLint / その他キャッシュ
+# --- Lint / Tools Cache ---
 .eslintcache
 .stylelintcache
 .cspellcache
 cspell-cache/
+*.tgz                 # npm pack等のアーカイブ
 
 # --- Prisma ---
-# 生成物（生成先を作っているなら ignore 推奨）
+# 生成コード出力先を使う場合のみ
 prisma/generated/
-
-# マイグレーションは原則コミット（履歴）
-# prisma/migrations/  ← 追跡したいので ignore しない
+# prisma/migrations/ は履歴のためコミット推奨（ignoreしない）
 
 # --- Testing / Coverage ---
 coverage/
@@ -44,18 +52,18 @@ coverage/
 # --- Build / Bundler その他 ---
 dist/
 build/
+.cache/               # 一般的なツールのキャッシュ
 
 # --- Vercel / Deploy ---
 .vercel/
+.vercel/output/**     # vercel build の出力（必要なら無視）
 
-# --- Misc ---
-# 一時ファイル・ローカル用
+# --- Misc（一時/ローカル） ---
 tmp/
 temp/
 *.local.*
-.env.local
-.DS_Store
 
-# local debug
+# --- Local debug artifacts ---
 headers.txt
 jar.txt
+before.jar
