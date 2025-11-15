@@ -2,7 +2,20 @@
   "$schema": "https://raw.githubusercontent.com/streetsidesoftware/cspell/main/cspell.schema.json",
   "version": "0.2",
   "language": "en,ja",
-  "words": ["Supabase", "supabase", "SUPABASE", "primaria", "turbopack", "Kaku"],
+  "words": [
+    "Supabase",
+    "supabase",
+    "SUPABASE",
+    "primaria",
+    "turbopack",
+    "Kaku",
+    "protos",
+    "bbox",
+    "tessdata",
+    "traineddata",
+    "cmdk",
+    "tesseract"
+  ],
   "ignorePaths": [
     "node_modules/**",
     ".next/**",

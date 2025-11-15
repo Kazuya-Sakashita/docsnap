@@ -1,3 +1,4 @@
+// src/components/receipts/receipts-list-content.tsx
 "use client"
 
 import { useState } from "react"
@@ -115,8 +116,8 @@ export interface ReceiptsFilterState {
 
 export function ReceiptsListContent() {
   const [searchQuery, setSearchQuery] = useState("")
-  const [isLoading, setIsLoading] = useState(false)
-  const [receipts, setReceipts] = useState<Receipt[]>(dummyReceipts)
+  const [isLoading, _setIsLoading] = useState(false) // 未使用setterは先頭にアンダースコア
+  const [receipts, _setReceipts] = useState<Receipt[]>(dummyReceipts) // 同上
   const [selectedReceiptId, setSelectedReceiptId] = useState<string | null>(null)
   const [sortBy, setSortBy] = useState<"date" | "amount" | "updated">("date")
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc")
@@ -225,30 +226,32 @@ export function ReceiptsListContent() {
         <div className="space-y-4 p-4 md:p-6">
           {/* ヘッダー */}
           <div>
-            <h1 className="text-balance text-2xl font-bold tracking-tight text-slate-900 md:text-3xl">レシート一覧</h1>
+            <h1 className="text-2xl font-bold tracking-tight text-balance text-slate-900 md:text-3xl">
+              レシート一覧
+            </h1>
             <p className="text-sm text-slate-600">{filteredReceipts.length}件のレシート</p>
           </div>
 
           {/* 検索とフィルタ */}
           <div className="flex flex-col gap-3 md:flex-row md:items-center">
             <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <Search className="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <Input
                 placeholder="店舗名、メモで検索..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9 border-blue-200"
+                className="border-blue-200 pl-9"
               />
             </div>
 
             {/* モバイル: フィルタシート */}
             <Sheet>
               <SheetTrigger asChild>
-                <Button variant="outline" className="md:hidden bg-transparent">
+                <Button variant="outline" className="bg-transparent md:hidden">
                   <SlidersHorizontal className="mr-2 h-4 w-4" />
                   フィルタ
                   {hasActiveFilters && (
-                    <span className="ml-2 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-xs text-primary-foreground">
+                    <span className="bg-primary text-primary-foreground ml-2 flex h-5 w-5 items-center justify-center rounded-full text-xs">
                       !
                     </span>
                   )}
@@ -282,7 +285,7 @@ export function ReceiptsListContent() {
             {/* PC: フィルタボタン */}
             <Button
               variant="outline"
-              className="hidden md:flex bg-transparent"
+              className="hidden bg-transparent md:flex"
               onClick={() => {
                 const filterPanel = document.getElementById("filter-panel")
                 filterPanel?.classList.toggle("hidden")
@@ -291,14 +294,19 @@ export function ReceiptsListContent() {
               <SlidersHorizontal className="mr-2 h-4 w-4" />
               フィルタ
               {hasActiveFilters && (
-                <span className="ml-2 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-xs text-primary-foreground">
+                <span className="bg-primary text-primary-foreground ml-2 flex h-5 w-5 items-center justify-center rounded-full text-xs">
                   !
                 </span>
               )}
             </Button>
 
             {hasActiveFilters && (
-              <Button variant="ghost" size="sm" onClick={handleClearFilters} className="hidden md:flex">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleClearFilters}
+                className="hidden md:flex"
+              >
                 <X className="mr-2 h-4 w-4" />
                 クリア
               </Button>
@@ -328,7 +336,12 @@ export function ReceiptsListContent() {
                   {hasActiveFilters ? "検索条件を変更してください" : "レシートを追加してください"}
                 </p>
                 {hasActiveFilters && (
-                  <Button variant="outline" size="sm" onClick={handleClearFilters} className="mt-4 bg-transparent">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleClearFilters}
+                    className="mt-4 bg-transparent"
+                  >
                     条件をリセット
                   </Button>
                 )}
@@ -368,8 +381,11 @@ export function ReceiptsListContent() {
 
       {/* PC: 右ペイン詳細プレビュー */}
       {selectedReceipt && (
-        <div className="hidden w-96 border-l border-border lg:block">
-          <ReceiptDetailPanel receipt={selectedReceipt} onClose={() => setSelectedReceiptId(null)} />
+        <div className="border-border hidden w-96 border-l lg:block">
+          <ReceiptDetailPanel
+            receipt={selectedReceipt}
+            onClose={() => setSelectedReceiptId(null)}
+          />
         </div>
       )}
     </div>
