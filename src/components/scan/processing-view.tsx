@@ -1,13 +1,18 @@
+// src/components/scan/processing-view.tsx
 "use client"
 
-import { useEffect, useState } from "react"
-import { Loader2, Upload, ScanLine, CheckCircle2, XCircle } from "lucide-react"
+import type { OcrMode } from "./types"
+import { useMemo } from "react"
+import { Loader2, Upload, ScanLine, CheckCircle2 } from "lucide-react"
 import { Progress } from "@/components/ui/progress"
 import { Button } from "@/components/ui/button"
-import { Alert, AlertDescription } from "@/components/ui/alert"
+import { cn } from "@/lib/utils"
 
-interface ProcessingViewProps {
+export type ProcessingViewProps = {
   file: File | null
+  mode: OcrMode
+  /** 0〜100 */
+  progress: number
 }
 
 type ProcessStep = "upload" | "ocr" | "analyze" | "save"
@@ -19,103 +24,41 @@ const steps: { id: ProcessStep; label: string; icon: typeof Upload }[] = [
   { id: "save", label: "保存", icon: CheckCircle2 },
 ]
 
-export function ProcessingView({ file }: ProcessingViewProps) {
-  const [currentStep, setCurrentStep] = useState<ProcessStep>("upload")
-  const [progress, setProgress] = useState(0)
-  const [error, setError] = useState<string | null>(null)
-  const [estimatedTime, setEstimatedTime] = useState(3)
+/** 進捗(0-100)から現在ステップのインデックスを決める */
+function stepIndexFromProgress(p: number): number {
+  if (p < 25) return 0 // upload
+  if (p < 70) return 1 // ocr
+  if (p < 90) return 2 // analyze
+  return 3 // save
+}
 
-  useEffect(() => {
-    // ダミーの進行シミュレーション
-    const stepDurations = {
-      upload: 500,
-      ocr: 1500,
-      analyze: 800,
-      save: 200,
-    }
+export function ProcessingView({ file, mode, progress }: ProcessingViewProps) {
+  const clamped = Math.max(0, Math.min(100, progress))
+  const activeIndex = stepIndexFromProgress(clamped)
 
-    let currentProgress = 0
-    const totalDuration = Object.values(stepDurations).reduce((a, b) => a + b, 0)
-
-    const interval = setInterval(() => {
-      currentProgress += 1
-      setProgress(Math.min((currentProgress / totalDuration) * 100, 100))
-      setEstimatedTime(Math.max(Math.ceil((totalDuration - currentProgress) / 1000), 0))
-
-      // ステップ遷移
-      if (currentProgress === stepDurations.upload) {
-        setCurrentStep("ocr")
-      } else if (currentProgress === stepDurations.upload + stepDurations.ocr) {
-        setCurrentStep("analyze")
-      } else if (currentProgress === stepDurations.upload + stepDurations.ocr + stepDurations.analyze) {
-        setCurrentStep("save")
-      }
-    }, 10)
-
-    return () => clearInterval(interval)
-  }, [])
+  // 簡易ETA（ヒューリスティック）
+  const estimatedTime = useMemo(() => Math.max(0, Math.ceil((100 - clamped) / 8)), [clamped])
 
   const handleCancel = () => {
-    // TODO: 実際のキャンセル処理
+    // 必要なら親にコールバックを生やして差し替え
     window.history.back()
-  }
-
-  const handleRetry = () => {
-    setError(null)
-    setCurrentStep("upload")
-    setProgress(0)
-  }
-
-  if (error) {
-    return (
-      <div className="flex min-h-[calc(100vh-5rem)] items-center justify-center p-4">
-        <div className="w-full max-w-md space-y-6 text-center">
-          <div className="flex justify-center">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-destructive/10">
-              <XCircle className="h-8 w-8 text-destructive" />
-            </div>
-          </div>
-          <div>
-            <h2 className="text-balance mb-2 text-xl font-bold">解析に失敗しました</h2>
-            <p className="text-sm text-muted-foreground">{error}</p>
-          </div>
-          <Alert>
-            <AlertDescription>
-              <p className="mb-2 font-medium">解決方法:</p>
-              <ul className="space-y-1 text-left text-sm">
-                <li>• 明るい場所で再度撮影してください</li>
-                <li>• レシート全体が写っているか確認してください</li>
-                <li>• ピントが合っているか確認してください</li>
-              </ul>
-            </AlertDescription>
-          </Alert>
-          <div className="flex gap-3">
-            <Button variant="outline" className="flex-1 bg-transparent" onClick={handleCancel}>
-              キャンセル
-            </Button>
-            <Button className="flex-1" onClick={handleRetry}>
-              再試行
-            </Button>
-          </div>
-        </div>
-      </div>
-    )
   }
 
   return (
     <div className="flex min-h-[calc(100vh-5rem)] items-center justify-center p-4">
       <div className="w-full max-w-md space-y-8">
         <div className="text-center">
-          <h2 className="text-balance mb-2 text-xl font-bold">レシートを解析中</h2>
-          <p className="text-sm text-muted-foreground">残り約 {estimatedTime} 秒</p>
+          <h2 className="mb-1 text-xl font-bold text-balance">レシートを解析中</h2>
+          <p className="text-muted-foreground text-xs">モード: {String(mode)}</p>
+          <p className="text-muted-foreground mt-1 text-sm">残り約 {estimatedTime} 秒</p>
         </div>
 
         {/* ステップインジケーター */}
-        <div className="flex items-center justify-between">
+        <div className="relative flex items-center justify-between">
           {steps.map((step, index) => {
             const Icon = step.icon
-            const isActive = step.id === currentStep
-            const isCompleted = steps.findIndex((s) => s.id === currentStep) > index
+            const isActive = index === activeIndex
+            const isCompleted = index < activeIndex
 
             return (
               <div key={step.id} className="flex flex-1 flex-col items-center">
@@ -129,19 +72,30 @@ export function ProcessingView({ file }: ProcessingViewProps) {
                         : "bg-muted text-muted-foreground",
                   )}
                 >
-                  {isActive ? <Loader2 className="h-5 w-5 animate-spin" /> : <Icon className="h-5 w-5" />}
+                  {isActive ? (
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                  ) : (
+                    <Icon className="h-5 w-5" />
+                  )}
                 </div>
                 <span
                   className={cn(
                     "text-xs",
-                    isActive || isCompleted ? "font-medium text-foreground" : "text-muted-foreground",
+                    isActive || isCompleted
+                      ? "text-foreground font-medium"
+                      : "text-muted-foreground",
                   )}
                 >
                   {step.label}
                 </span>
+
+                {/* コネクタ線 */}
                 {index < steps.length - 1 && (
                   <div
-                    className={cn("absolute mt-5 h-0.5 w-16 -translate-x-8", isCompleted ? "bg-primary" : "bg-muted")}
+                    className={cn(
+                      "absolute top-5 h-0.5 w-16 -translate-x-8",
+                      index < activeIndex ? "bg-primary" : "bg-muted",
+                    )}
                     style={{ left: `${(index + 1) * 25}%` }}
                   />
                 )}
@@ -152,15 +106,15 @@ export function ProcessingView({ file }: ProcessingViewProps) {
 
         {/* プログレスバー */}
         <div className="space-y-2">
-          <Progress value={progress} className="h-2" />
-          <p className="text-center text-sm text-muted-foreground">{Math.round(progress)}%</p>
+          <Progress value={clamped} className="h-2" />
+          <p className="text-muted-foreground text-center text-sm">{Math.round(clamped)}%</p>
         </div>
 
         {/* ファイル情報 */}
         {file && (
-          <div className="rounded-lg bg-muted/50 p-4">
+          <div className="bg-muted/50 rounded-lg p-4">
             <p className="text-sm font-medium">{file.name}</p>
-            <p className="text-xs text-muted-foreground">{(file.size / 1024).toFixed(1)} KB</p>
+            <p className="text-muted-foreground text-xs">{(file.size / 1024).toFixed(1)} KB</p>
           </div>
         )}
 
@@ -170,8 +124,4 @@ export function ProcessingView({ file }: ProcessingViewProps) {
       </div>
     </div>
   )
-}
-
-function cn(...classes: (string | boolean | undefined)[]) {
-  return classes.filter(Boolean).join(" ")
 }

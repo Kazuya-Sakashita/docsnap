@@ -1,7 +1,7 @@
 // app/page.tsx  ← ホーム（/）をサーバー側でガード
 import { cookies } from "next/headers"
 import { redirect } from "next/navigation"
-import { createServerClient, type CookieOptions } from "@supabase/ssr"
+import { createServerClient } from "@supabase/ssr"
 import { AppLayout } from "@/components/app-layout"
 import { DashboardContent } from "@/components/dashboard/dashboard-content"
 
@@ -18,11 +18,6 @@ export default async function HomePage() {
         // ★ 型に合わせて getAll / setAll を実装
         getAll() {
           return jar.getAll().map((c) => ({ name: c.name, value: c.value }))
-        },
-        setAll(cookiesToSet: { name: string; value: string; options: CookieOptions }[]) {
-          for (const { name, value, options } of cookiesToSet) {
-            jar.set({ name, value, ...options })
-          }
         },
       },
     },
