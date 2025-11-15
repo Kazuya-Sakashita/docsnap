@@ -13,6 +13,7 @@ pnpm-debug.log*
 
 # --- Env / Secrets ---
 .env
+.env.local
 .env.*                # .env.local, .env.development など含む
 !.env.example         # サンプルはコミット
 
@@ -29,6 +30,7 @@ gcp-*.json
 .DS_Store
 Thumbs.db
 .idea/
+.vscode/
 .vscode/**            # VSCode設定をコミットしない場合
 !.vscode/settings.json
 !.vscode/extensions.json
