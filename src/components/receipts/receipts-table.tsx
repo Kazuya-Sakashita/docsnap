@@ -1,5 +1,7 @@
+// src/components/receipts/receipts-table.tsx
 "use client"
 
+import type { ComponentProps } from "react"
 import Link from "next/link"
 import { ArrowUpDown, ReceiptIcon, FileText } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
@@ -7,7 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { formatCurrency, formatDate } from "@/lib/format"
 import { cn } from "@/lib/utils"
-import type { Receipt, ReceiptStatus } from "@/types/receipt"
+import type { Receipt } from "@/types/receipt"
 
 interface ReceiptsTableProps {
   receipts: Receipt[]
@@ -18,17 +20,26 @@ interface ReceiptsTableProps {
   onSort: (by: "date" | "amount" | "updated") => void
 }
 
-const statusConfig: Record<
-  ReceiptStatus,
-  { label: string; variant: "default" | "secondary" | "destructive" | "warning" }
-> = {
+type BadgeVariant = ComponentProps<typeof Badge>["variant"]
+
+// status文字列 → 表示設定のマップ
+const statusConfig: Record<string, { label: string; variant: BadgeVariant }> = {
   READY: { label: "完了", variant: "default" },
-  PROCESSING: { label: "解析中", variant: "secondary" },
+  DRAFT: { label: "下書き", variant: "outline" },
+  ARCHIVED: { label: "アーカイブ", variant: "outline" },
+  DUPLICATE: { label: "重複", variant: "secondary" },
   ERROR: { label: "エラー", variant: "destructive" },
-  DUPLICATE: { label: "重複", variant: "warning" },
+  // 将来 PROCESSING など増えてもここに足せばOK
 }
 
-export function ReceiptsTable({ receipts, selectedId, onSelect, sortBy, sortOrder, onSort }: ReceiptsTableProps) {
+export function ReceiptsTable({
+  receipts,
+  selectedId,
+  onSelect,
+  sortBy: _sortBy, // いまは未使用なので ESLint 対策
+  sortOrder: _sortOrder,
+  onSort,
+}: ReceiptsTableProps) {
   return (
     <div className="rounded-lg border border-border">
       <Table>
@@ -37,20 +48,35 @@ export function ReceiptsTable({ receipts, selectedId, onSelect, sortBy, sortOrde
             <TableHead className="w-[100px]">種別</TableHead>
             <TableHead>店舗名</TableHead>
             <TableHead>
-              <Button variant="ghost" size="sm" onClick={() => onSort("date")} className="-ml-3">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => onSort("date")}
+                className="-ml-3"
+              >
                 購入日
                 <ArrowUpDown className="ml-2 h-4 w-4" />
               </Button>
             </TableHead>
             <TableHead>
-              <Button variant="ghost" size="sm" onClick={() => onSort("amount")} className="-ml-3">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => onSort("amount")}
+                className="-ml-3"
+              >
                 金額
                 <ArrowUpDown className="ml-2 h-4 w-4" />
               </Button>
             </TableHead>
             <TableHead>ステータス</TableHead>
             <TableHead>
-              <Button variant="ghost" size="sm" onClick={() => onSort("updated")} className="-ml-3">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => onSort("updated")}
+                className="-ml-3"
+              >
                 更新日
                 <ArrowUpDown className="ml-2 h-4 w-4" />
               </Button>
@@ -59,7 +85,13 @@ export function ReceiptsTable({ receipts, selectedId, onSelect, sortBy, sortOrde
         </TableHeader>
         <TableBody>
           {receipts.map((receipt) => {
-            const statusInfo = statusConfig[receipt.status]
+            const statusInfo =
+              statusConfig[receipt.status] ??
+              ({
+                label: receipt.status,
+                variant: "outline" as BadgeVariant,
+              } as const)
+
             const isSelected = receipt.id === selectedId
             const isInvoice = receipt.type === "INVOICE"
 
@@ -85,20 +117,31 @@ export function ReceiptsTable({ receipts, selectedId, onSelect, sortBy, sortOrde
                   </div>
                 </TableCell>
                 <TableCell>
-                  <Link href={`/receipts/${receipt.id}`} className="font-medium hover:underline">
+                  <Link
+                    href={`/receipts/${receipt.id}`}
+                    className="font-medium hover:underline"
+                  >
                     {receipt.storeName}
                   </Link>
                   {isInvoice && receipt.invoiceNumber && (
-                    <p className="text-xs text-muted-foreground">No. {receipt.invoiceNumber}</p>
+                    <p className="text-xs text-muted-foreground">
+                      No. {receipt.invoiceNumber}
+                    </p>
                   )}
-                  {receipt.memo && <p className="text-sm text-muted-foreground">{receipt.memo}</p>}
+                  {receipt.memo && (
+                    <p className="text-sm text-muted-foreground">{receipt.memo}</p>
+                  )}
                 </TableCell>
                 <TableCell>{formatDate(receipt.purchaseDate)}</TableCell>
-                <TableCell className="font-mono font-semibold">{formatCurrency(receipt.total)}</TableCell>
+                <TableCell className="font-mono font-semibold">
+                  {formatCurrency(receipt.total)}
+                </TableCell>
                 <TableCell>
                   <Badge variant={statusInfo.variant}>{statusInfo.label}</Badge>
                 </TableCell>
-                <TableCell className="text-sm text-muted-foreground">{formatDate(receipt.updatedAt)}</TableCell>
+                <TableCell className="text-sm text-muted-foreground">
+                  {formatDate(receipt.updatedAt)}
+                </TableCell>
               </TableRow>
             )
           })}
