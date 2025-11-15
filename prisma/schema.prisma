@@ -23,6 +23,7 @@ enum ReceiptType {
 }
 
 enum ReceiptStatus {
+  DRAFT
   READY
   PROCESSING
   ERROR
@@ -40,6 +41,15 @@ enum PaymentMethod {
   CASH
   CARD
   TRANSFER
+  OTHER
+}
+
+// persist.ts が期待する OCR エンジン種別
+enum OcrEngine {
+  TESSERACT
+  GOOGLE_DOC_AI
+  AWS_TEXTRACT
+  AZURE_FORM_RECOGNIZER
   OTHER
 }
 
@@ -78,10 +88,24 @@ model Receipt {
   memo         String?       @db.Text
   status       ReceiptStatus @default(READY)
 
-  // OCR関連
+  // OCR関連（既存）
   confidenceScore Float?
   imageUrl        String?
   ocrData         Json?
+
+  // 解析メタ（persist.ts が利用）
+  rawOcrText       String
+  normalizedJson   Json
+  taxBreakdownJson Json?
+  parser           String?
+  parseVersion     String?
+  ocrEngine        OcrEngine? // ← 追加
+
+  // 重複検知
+  fingerprint     String // ← 追加（テキスト指紋）
+  isDuplicateOfId String?   @db.Uuid
+  isDuplicateOf   Receipt?  @relation("DuplicateOf", fields: [isDuplicateOfId], references: [id])
+  duplicates      Receipt[] @relation("DuplicateOf")
 
   // カテゴリ
   categoryId String? @db.Uuid
@@ -103,7 +127,9 @@ model Receipt {
   user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   category Category?     @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   items    ReceiptItem[]
+  files    ReceiptFile[] // ← 追加（ファイル添付）
 
+  @@unique([userId, fingerprint]) // ← ユーザー内で指紋ユニーク
   @@index([userId])
   @@index([categoryId])
   @@index([purchaseDate])
@@ -111,14 +137,16 @@ model Receipt {
   @@map("receipts")
 }
 
-// 明細
+// 明細（Decimal を null 許容、追加メタ rawLine / taxRate）
 model ReceiptItem {
-  id        String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  receiptId String  @db.Uuid
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  receiptId String   @db.Uuid
   name      String
-  quantity  Int     @default(1)
-  unitPrice Decimal @db.Decimal(14, 2)
-  amount    Decimal @db.Decimal(14, 2)
+  quantity  Int      @default(1)
+  unitPrice Decimal? @db.Decimal(14, 2) // ← null 許容
+  amount    Decimal? @db.Decimal(14, 2) // ← null 許容
+  taxRate   Float?
+  rawLine   String?
 
   createdAt DateTime  @default(now()) @db.Timestamptz(6)
   updatedAt DateTime  @updatedAt @db.Timestamptz(6)
@@ -128,6 +156,26 @@ model ReceiptItem {
 
   @@index([receiptId])
   @@map("receipt_items")
+}
+
+// 添付ファイル（persist.ts の files に対応）
+model ReceiptFile {
+  id        String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  receiptId String  @db.Uuid
+  page      Int?
+  url       String
+  mimeType  String?
+  width     Int?
+  height    Int?
+  sha256    String?
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  receipt Receipt @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+
+  @@index([receiptId])
+  @@map("receipt_files")
 }
 
 // カテゴリ
