@@ -1,6 +1,7 @@
+// src/components/receipts/receipt-detail-content.tsx
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { ArrowLeft, Save, Trash2, AlertTriangle } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
@@ -20,83 +21,234 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import type { Receipt, ReceiptItem } from "@/types/receipt"
 
 interface ReceiptDetailContentProps {
   receiptId: string
 }
 
-// ダミーデータ
-const dummyReceipt: Receipt = {
-  id: "receipt-123",
-  userId: "user1",
-  title: "スーパーマーケット",
-  storeName: "イオン",
-  purchaseDate: "2025-02-02",
-  currency: "JPY",
-  subtotal: 4500,
-  tax: 450,
-  total: 4950,
-  memo: "",
-  status: "READY",
-  confidenceScore: 0.95,
-  imageUrl: "/paper-receipt.png",
-  items: [
-    { id: "1", name: "牛乳", quantity: 2, unitPrice: 200, amount: 400 },
-    { id: "2", name: "食パン", quantity: 1, unitPrice: 180, amount: 180 },
-    { id: "3", name: "たまご", quantity: 1, unitPrice: 250, amount: 250 },
-    { id: "4", name: "トマト", quantity: 3, unitPrice: 150, amount: 450 },
-  ],
-  createdAt: "2025-02-02T10:30:00Z",
-  updatedAt: "2025-02-02T10:30:00Z",
+// エラーメッセージ整形用ヘルパー
+function getErrorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message
+  if (typeof err === "string") return err
+  try {
+    return JSON.stringify(err)
+  } catch {
+    return "不明なエラーが発生しました"
+  }
 }
 
 export function ReceiptDetailContent({ receiptId }: ReceiptDetailContentProps) {
-  const [receipt, setReceipt] = useState<Receipt>(dummyReceipt)
+  const [receipt, setReceipt] = useState<Receipt | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
   const { toast } = useToast()
   const router = useRouter()
 
-  const handleSave = async () => {
-    setIsSaving(true)
+  // ========= 1. 初期ロード：DB からレシートを取得 =========
+  useEffect(() => {
+    let cancelled = false
 
-    // TODO: 実際の保存処理
-    setTimeout(() => {
+    const fetchReceipt = async () => {
+      setIsLoading(true)
+      setError(null)
+
+      try {
+        const res = await fetch(`/api/receipts/${receiptId}`, {
+          method: "GET",
+          cache: "no-store",
+        })
+
+        if (!res.ok) {
+          throw new Error(`レシートの取得に失敗しました (${res.status})`)
+        }
+
+        const data = await res.json()
+        // {"ok":true,"receipt":{...}} または 直接 { ... } の両方に対応
+        const loaded: Receipt = (data.receipt ?? data) as Receipt
+
+        if (!cancelled) {
+          setReceipt(loaded)
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError(getErrorMessage(err))
+          setReceipt(null)
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false)
+        }
+      }
+    }
+
+    void fetchReceipt()
+
+    return () => {
+      cancelled = true
+    }
+  }, [receiptId])
+
+  // ========= 2. 保存処理（TODO: API 実装に合わせてエンドポイントを調整） =========
+  const handleSave = async () => {
+    if (!receipt) return
+    setIsSaving(true)
+    setError(null)
+
+    try {
+      const res = await fetch(`/api/receipts/${receiptId}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ receipt }),
+      })
+
+      if (!res.ok) {
+        throw new Error(`保存に失敗しました (${res.status})`)
+      }
+
+      const data = await res.json()
+      const updated: Receipt = (data.receipt ?? data) as Receipt
+
+      setReceipt(updated)
+
       toast({
         title: "保存しました",
         description: "レシート情報を更新しました",
       })
+    } catch (err) {
+      setError(getErrorMessage(err))
+      toast({
+        title: "保存に失敗しました",
+        description: getErrorMessage(err),
+        variant: "destructive",
+      })
+    } finally {
       setIsSaving(false)
-    }, 1000)
+    }
   }
 
+  // ========= 3. 削除処理 =========
   const handleDelete = async () => {
-    // TODO: 実際の削除処理
-    toast({
-      title: "削除しました",
-      description: "レシートを削除しました",
-    })
-    router.push("/receipts")
+    setError(null)
+
+    try {
+      const res = await fetch(`/api/receipts/${receiptId}`, {
+        method: "DELETE",
+      })
+
+      if (!res.ok) {
+        throw new Error(`削除に失敗しました (${res.status})`)
+      }
+
+      toast({
+        title: "削除しました",
+        description: "レシートを削除しました",
+      })
+
+      router.push("/receipts")
+    } catch (err) {
+      setError(getErrorMessage(err))
+      toast({
+        title: "削除に失敗しました",
+        description: getErrorMessage(err),
+        variant: "destructive",
+      })
+    }
   }
 
+  // ========= 4. フォームの変更反映 =========
   const handleFormChange = (updates: Partial<Receipt>) => {
-    setReceipt({ ...receipt, ...updates })
+    setReceipt((prev) => (prev ? { ...prev, ...updates } : prev))
   }
 
   const handleItemsChange = (items: ReceiptItem[]) => {
-    // 合計を再計算
-    const subtotal = items.reduce((sum, item) => sum + item.amount, 0)
-    const tax = Math.round(subtotal * 0.1)
-    const total = subtotal + tax
+    setReceipt((prev) => {
+      if (!prev) return prev
 
-    setReceipt({
-      ...receipt,
-      items,
-      subtotal,
-      tax,
-      total,
+      const subtotal = items.reduce((sum, item) => sum + item.amount, 0)
+      const tax = Math.round(subtotal * 0.1)
+      const total = subtotal + tax
+
+      return {
+        ...prev,
+        items,
+        subtotal,
+        tax,
+        total,
+      }
     })
   }
+
+  // ========= 5. ローディング・エラー状態の表示 =========
+  if (isLoading && !receipt) {
+    return (
+      <div className="min-h-screen">
+        <div className="sticky top-0 z-10 border-b border-blue-200 bg-white/95 backdrop-blur shadow-soft">
+          <div className="flex items-center gap-3 p-4">
+            <Link href="/receipts">
+              <Button variant="ghost" size="icon" className="tap-target">
+                <ArrowLeft className="h-5 w-5" />
+                <span className="sr-only">戻る</span>
+              </Button>
+            </Link>
+            <div>
+              <h1 className="font-semibold text-slate-900">レシート詳細</h1>
+              <p className="text-xs text-slate-500">読み込み中...</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="p-4 md:p-6">
+          <div className="animate-pulse space-y-4">
+            <div className="h-64 rounded-xl bg-slate-100" />
+            <div className="h-40 rounded-xl bg-slate-100" />
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (error && !receipt) {
+    return (
+      <div className="min-h-screen">
+        <div className="sticky top-0 z-10 border-b border-blue-200 bg-white/95 backdrop-blur shadow-soft">
+          <div className="flex items-center gap-3 p-4">
+            <Link href="/receipts">
+              <Button variant="ghost" size="icon" className="tap-target">
+                <ArrowLeft className="h-5 w-5" />
+                <span className="sr-only">戻る</span>
+              </Button>
+            </Link>
+            <div>
+              <h1 className="font-semibold text-slate-900">レシート詳細</h1>
+              <p className="text-xs text-slate-500">ID: {receiptId}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="p-4 md:p-6">
+          <Alert variant="destructive">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertTitle>レシートが取得できませんでした</AlertTitle>
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+          <div className="mt-4">
+            <Button asChild variant="outline">
+              <Link href="/receipts">一覧に戻る</Link>
+            </Button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // ここまで来たら receipt は存在する前提
+  if (!receipt) return null
 
   return (
     <div className="min-h-screen">
@@ -146,11 +298,22 @@ export function ReceiptDetailContent({ receiptId }: ReceiptDetailContentProps) {
         </div>
       </div>
 
+      {/* エラーがある場合は画面上部に表示 */}
+      {error && (
+        <div className="p-4 md:p-6">
+          <Alert variant="destructive">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertTitle>エラー</AlertTitle>
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        </div>
+      )}
+
       {/* メインコンテンツ */}
       <div className="grid gap-6 p-4 md:p-6 lg:grid-cols-2 lg:gap-8">
         {/* 左側: 画像プレビュー */}
         <div className="lg:sticky lg:top-24 lg:h-fit">
-          <ReceiptImagePreview imageUrl={receipt.imageUrl} />
+          <ReceiptImagePreview imageUrl={receipt.imageUrl ?? "/paper-receipt.png"} />
         </div>
 
         {/* 右側: 編集フォーム */}
@@ -169,7 +332,7 @@ export function ReceiptDetailContent({ receiptId }: ReceiptDetailContentProps) {
 
       {/* 下部固定バー */}
       <div className="fixed bottom-0 left-0 right-0 z-10 border-t border-blue-200 bg-white/95 p-4 backdrop-blur shadow-soft-lg md:left-64">
-        <div className="mx-auto flex max-w-4xl items-center justify-between gap-4">
+        <div className="mx-autoflex max-w-4xl items-center justify-between gap-4">
           <Link href="/receipts" className="hidden md:block">
             <Button variant="outline">キャンセル</Button>
           </Link>

@@ -1,5 +1,7 @@
+// src/components/receipts/receipt-edit-form.tsx
 "use client"
 
+import type { ComponentProps } from "react"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
@@ -9,23 +11,34 @@ import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { AlertCircle, ReceiptIcon, FileText } from "lucide-react"
-import type { Receipt, ReceiptType } from "@/types/receipt"
+import type {
+  Receipt,
+  ReceiptType,
+  ReceiptStatus,
+  PaymentMethod,
+  Currency,
+} from "@/types/receipt"
 
 interface ReceiptEditFormProps {
   receipt: Receipt
   onChange: (updates: Partial<Receipt>) => void
 }
 
-const statusConfig = {
-  READY: { label: "完了", variant: "default" as const },
-  PROCESSING: { label: "解析中", variant: "secondary" as const },
-  ERROR: { label: "エラー", variant: "destructive" as const },
-  DUPLICATE: { label: "重複", variant: "warning" as const },
+type BadgeVariant = ComponentProps<typeof Badge>["variant"]
+
+// Prisma の ReceiptStatus に対応した表示設定
+const statusConfig: Record<ReceiptStatus, { label: string; variant: BadgeVariant }> = {
+  READY: { label: "完了", variant: "default" },
+  DRAFT: { label: "下書き", variant: "outline" },
+  PROCESSING: { label: "解析中", variant: "secondary" },
+  DUPLICATE: { label: "重複", variant: "secondary" },
+  ERROR: { label: "エラー", variant: "destructive" },
 }
 
 export function ReceiptEditForm({ receipt, onChange }: ReceiptEditFormProps) {
   const statusInfo = statusConfig[receipt.status]
-  const needsReview = receipt.confidenceScore && receipt.confidenceScore < 0.8
+
+  const needsReview = receipt.confidenceScore != null && receipt.confidenceScore < 0.8
   const isInvoice = receipt.type === "INVOICE"
 
   return (
@@ -41,7 +54,8 @@ export function ReceiptEditForm({ receipt, onChange }: ReceiptEditFormProps) {
           <Alert>
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>
-              信頼スコアが低いため、内容を確認してください（スコア: {(receipt.confidenceScore! * 100).toFixed(0)}%）
+              信頼スコアが低いため、内容を確認してください（スコア:{" "}
+              {(receipt.confidenceScore! * 100).toFixed(0)}%）
             </AlertDescription>
           </Alert>
         )}
@@ -150,8 +164,8 @@ export function ReceiptEditForm({ receipt, onChange }: ReceiptEditFormProps) {
                   支払方法 <span className="text-xs text-muted-foreground">(任意)</span>
                 </Label>
                 <Select
-                  value={receipt.paymentMethod || ""}
-                  onValueChange={(value) => onChange({ paymentMethod: value })}
+                  value={receipt.paymentMethod ?? undefined}
+                  onValueChange={(value: PaymentMethod) => onChange({ paymentMethod: value })}
                 >
                   <SelectTrigger id="paymentMethod">
                     <SelectValue placeholder="選択してください" />
@@ -202,7 +216,10 @@ export function ReceiptEditForm({ receipt, onChange }: ReceiptEditFormProps) {
 
           <div className="space-y-2">
             <Label htmlFor="currency">通貨</Label>
-            <Select value={receipt.currency} onValueChange={(value) => onChange({ currency: value })}>
+            <Select
+              value={receipt.currency as Currency}
+              onValueChange={(value: Currency) => onChange({ currency: value })}
+            >
               <SelectTrigger id="currency">
                 <SelectValue />
               </SelectTrigger>

@@ -14,7 +14,12 @@
     "tessdata",
     "traineddata",
     "cmdk",
-    "tesseract"
+    "tesseract",
+    "autoflex",
+    "eslintcache",
+    "stylelintcache",
+    "Vercel",
+    "vercel"
   ],
   "ignorePaths": [
     "node_modules/**",
