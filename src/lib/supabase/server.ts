@@ -1,6 +1,6 @@
 // src/lib/supabase/server.ts
 import { createServerClient, type CookieOptions } from "@supabase/ssr"
-import type { SupabaseClient } from "@supabase/supabase-js"
+import { createClient, type SupabaseClient } from "@supabase/supabase-js"
 
 /**
  * Next の cookies() が Sync/Async どちらでも動くように吸収するヘルパ
@@ -23,13 +23,21 @@ async function getCookieStore() {
   }
 }
 
-/** 読み取り専用（Server Component など・cookie 書き込みは no-op） */
-export async function createSupabaseServerClientReadonly(): Promise<SupabaseClient> {
+/**
+ * 共通の URL/KEY チェック
+ */
+function getSupabaseAnonEnv() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-  if (!url || !key)
+  if (!url || !key) {
     throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY")
+  }
+  return { url, key }
+}
 
+/** 読み取り専用（Server Component など・cookie 書き込みは no-op） */
+export async function createSupabaseServerClientReadonly(): Promise<SupabaseClient> {
+  const { url, key } = getSupabaseAnonEnv()
   const cookieStore = await getCookieStore()
 
   return createServerClient(url, key, {
@@ -49,11 +57,7 @@ export async function createSupabaseServerClientReadonly(): Promise<SupabaseClie
 
 /** Route Handler 等で cookie の set/remove が必要な場合はこちらを使用 */
 export async function createSupabaseServerClientMutable(): Promise<SupabaseClient> {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-  if (!url || !key)
-    throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY")
-
+  const { url, key } = getSupabaseAnonEnv()
   const cookieStore = await getCookieStore()
 
   return createServerClient(url, key, {
@@ -75,6 +79,26 @@ export async function createSupabaseServerClientMutable(): Promise<SupabaseClien
           // 同上
         }
       },
+    },
+  })
+}
+
+/**
+ * サービスロールキーを使った完全サーバー専用クライアント
+ * - cookies には依存しない
+ * - RLS をバイパスするため、**絶対にクライアント側には渡さないこと**
+ * - 画像保存のバッチ処理など、将来的な用途向け
+ */
+export function createSupabaseServiceClient(): SupabaseClient {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  if (!url || !serviceKey) {
+    throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY")
+  }
+
+  return createClient(url, serviceKey, {
+    auth: {
+      persistSession: false,
     },
   })
 }
