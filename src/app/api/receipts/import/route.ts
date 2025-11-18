@@ -153,19 +153,21 @@ export async function POST(req: Request) {
       }
     }
 
-    // 3. 品目情報(items) がダミーっぽければ、rawOcrText から再パースして上書き
-    const looksDummyItems = isDummyItems(normalized.items)
-    if (looksDummyItems) {
-      const fallbackTotal =
-        typeof normalized.totals.grandTotal === "number"
-          ? normalized.totals.grandTotal
-          : typeof extracted?.total === "number"
-            ? extracted.total ?? undefined
-            : undefined
+    // 3. 常に rawOcrText から品目を再抽出してみる
+    const fallbackTotal =
+      typeof normalized.totals.grandTotal === "number"
+        ? normalized.totals.grandTotal
+        : typeof extracted?.total === "number"
+          ? extracted.total ?? undefined
+          : undefined
 
-      const parsedItems = extractItemsFromText(rawOcrText, fallbackTotal)
+    const parsedItems = extractItemsFromText(rawOcrText, fallbackTotal)
 
-      if (parsedItems.length > 0) {
+    if (parsedItems.length > 0) {
+      const currentCount = normalized.items?.length ?? 0
+
+      // もともと items が無い / 1件しかない / fallback の方が明細行数が多い
+      if (currentCount === 0 || parsedItems.length >= currentCount) {
         normalized = {
           ...normalized,
           items: parsedItems,
@@ -190,7 +192,7 @@ export async function POST(req: Request) {
       ocrEngine,
       taxBreakdown,
       status: "DRAFT",
-      imageUrl: normalizedFiles?.[0]?.url ?? null, // ★ 追加：Receipt.imageUrl 用
+      imageUrl: normalizedFiles?.[0]?.url ?? null, // Receipt.imageUrl 用
     })
 
     console.log("[IMPORT] saved receipt summary:", {
@@ -211,8 +213,8 @@ export async function POST(req: Request) {
 
 //
 // ===== ここから下は品目抽出用ヘルパー =====
-// （ここはそのままでOK）
 //
+
 function normalizeText(s: string): string {
   const z2h = (str: string) =>
     str.replace(/[０-９．－，￥]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xfee0))
@@ -225,17 +227,6 @@ function parseAmount(raw?: string | null): number | undefined {
   if (!s) return
   const n = Number(s.replace(/,/g, ""))
   return Number.isFinite(n) ? Math.round(n) : undefined
-}
-
-function isDummyItems(items: ParsedItem[] | undefined): boolean {
-  if (!items || items.length === 0) return true
-  if (items.length > 1) return false
-
-  const item = items[0]
-  const name = item.name ?? ""
-  const total = item.total ?? 0
-
-  return name === "不明な品目" || total === 0
 }
 
 function isPriceLine(line: string): boolean {
@@ -289,6 +280,7 @@ function extractItemsFromText(rawText: string, grandTotal?: number): ParsedItem[
   let startIdx = 0
   let endIdx = lines.length
 
+  // 「領収書」「お買上明細」などの次行から明細ゾーンを開始
   for (let i = 0; i < lines.length; i++) {
     if (/領収書|お買上明細/.test(lines[i])) {
       startIdx = i + 1
@@ -296,6 +288,7 @@ function extractItemsFromText(rawText: string, grandTotal?: number): ParsedItem[
     }
   }
 
+  // 「小計」「合計」などが出てきたところで明細ゾーンを終了
   for (let i = startIdx; i < lines.length; i++) {
     if (/小計|合計|総合計/.test(lines[i])) {
       endIdx = i
@@ -306,6 +299,9 @@ function extractItemsFromText(rawText: string, grandTotal?: number): ParsedItem[
   const zone = lines.slice(startIdx, endIdx)
   const items: ParsedItem[] = []
 
+  // ★ どの行インデックスの品名をすでに使ったかを記録
+  const usedNameLineIndexes = new Set<number>()
+
   for (let i = 0; i < zone.length; i++) {
     const line = zone[i]
     if (!isPriceLine(line)) continue
@@ -313,7 +309,8 @@ function extractItemsFromText(rawText: string, grandTotal?: number): ParsedItem[
     const price = parseAmount(line)
     if (price == null) continue
 
-    const nameCandidates: string[] = []
+    // 直前数行から品名候補と @165x 2 形式を探す
+    const nameCandidates: Array<{ line: string; index: number }> = []
     const unitQty: { unitPrice?: number; qty?: number } = {}
 
     for (let back = 1; back <= 4; back++) {
@@ -329,7 +326,8 @@ function extractItemsFromText(rawText: string, grandTotal?: number): ParsedItem[
       }
 
       if (isItemNameCandidate(prev)) {
-        nameCandidates.push(prev)
+        // どの行から来た品名かも覚えておく
+        nameCandidates.push({ line: prev, index: idx })
       }
 
       if (/(本体合計|小計|合計|総合計)/.test(prev)) {
@@ -339,7 +337,24 @@ function extractItemsFromText(rawText: string, grandTotal?: number): ParsedItem[
 
     if (!nameCandidates.length) continue
 
-    const bestName = nameCandidates.sort((a, b) => scoreItemName(b) - scoreItemName(a))[0]
+    // ★ 後ろ（上の行）から見て「まだ使っていない品名」を選ぶ
+    let chosen: { line: string; index: number } | undefined
+    for (let ci = nameCandidates.length - 1; ci >= 0; ci--) {
+      const cand = nameCandidates[ci]
+      if (!usedNameLineIndexes.has(cand.index)) {
+        chosen = cand
+        break
+      }
+    }
+
+    // 全部使われていたら一番近い候補を再利用
+    if (!chosen) {
+      chosen = nameCandidates[0]
+    }
+
+    usedNameLineIndexes.add(chosen.index)
+    const bestName = chosen.line
+
     const qty = unitQty.qty ?? 1
     const unitPrice = unitQty.unitPrice ?? Math.round(price / qty)
 
@@ -352,6 +367,7 @@ function extractItemsFromText(rawText: string, grandTotal?: number): ParsedItem[
     })
   }
 
+  // 1件も取れなかった場合のみ、合計金額 1 行だけのフォールバック
   if (!items.length && grandTotal != null && grandTotal > 0) {
     const fallbackName = zone.find((l) => isItemNameCandidate(l)) || "不明な品目"
 
