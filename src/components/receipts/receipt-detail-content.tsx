@@ -28,6 +28,20 @@ interface ReceiptDetailContentProps {
   receiptId: string
 }
 
+// API からのレスポンスでは files が付いてくる前提なので、
+// このコンポーネント内だけの拡張型を定義しておく
+type ReceiptWithFiles = Receipt & {
+  files?: {
+    id?: string
+    url?: string | null
+    page?: number | null
+    mimeType?: string | null
+    width?: number | null
+    height?: number | null
+    sha256?: string | null
+  }[]
+}
+
 // エラーメッセージ整形用ヘルパー
 function getErrorMessage(err: unknown): string {
   if (err instanceof Error) return err.message
@@ -40,7 +54,7 @@ function getErrorMessage(err: unknown): string {
 }
 
 export function ReceiptDetailContent({ receiptId }: ReceiptDetailContentProps) {
-  const [receipt, setReceipt] = useState<Receipt | null>(null)
+  const [receipt, setReceipt] = useState<ReceiptWithFiles | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -68,9 +82,10 @@ export function ReceiptDetailContent({ receiptId }: ReceiptDetailContentProps) {
 
         const data = await res.json()
         // {"ok":true,"receipt":{...}} または 直接 { ... } の両方に対応
-        const loaded: Receipt = (data.receipt ?? data) as Receipt
+        const loaded = (data.receipt ?? data) as ReceiptWithFiles
 
         if (!cancelled) {
+          console.log("[ReceiptDetail] loaded receipt from API:", loaded)
           setReceipt(loaded)
         }
       } catch (err) {
@@ -92,7 +107,7 @@ export function ReceiptDetailContent({ receiptId }: ReceiptDetailContentProps) {
     }
   }, [receiptId])
 
-  // ========= 2. 保存処理（TODO: API 実装に合わせてエンドポイントを調整） =========
+  // ========= 2. 保存処理 =========
   const handleSave = async () => {
     if (!receipt) return
     setIsSaving(true)
@@ -112,7 +127,7 @@ export function ReceiptDetailContent({ receiptId }: ReceiptDetailContentProps) {
       }
 
       const data = await res.json()
-      const updated: Receipt = (data.receipt ?? data) as Receipt
+      const updated = (data.receipt ?? data) as ReceiptWithFiles
 
       setReceipt(updated)
 
@@ -162,7 +177,7 @@ export function ReceiptDetailContent({ receiptId }: ReceiptDetailContentProps) {
   }
 
   // ========= 4. フォームの変更反映 =========
-  const handleFormChange = (updates: Partial<Receipt>) => {
+  const handleFormChange = (updates: Partial<ReceiptWithFiles>) => {
     setReceipt((prev) => (prev ? { ...prev, ...updates } : prev))
   }
 
@@ -250,6 +265,21 @@ export function ReceiptDetailContent({ receiptId }: ReceiptDetailContentProps) {
   // ここまで来たら receipt は存在する前提
   if (!receipt) return null
 
+  // ========= 6. 画像 URL の決定ロジック =========
+  // files の中で最初に url を持っているものを採用
+  const fileUrl = receipt.files?.find((f) => !!f.url)?.url ?? null
+
+  const mainImageUrl =
+    fileUrl ??
+    receipt.imageUrl ??
+    "/paper-receipt.png"
+
+  // ★ デバッグログ（ここが重要）
+  console.log("[ReceiptDetail] receipt.id:", receipt.id)
+  console.log("[ReceiptDetail] files from API:", receipt.files)
+  console.log("[ReceiptDetail] receipt.imageUrl:", receipt.imageUrl)
+  console.log("[ReceiptDetail] chosen mainImageUrl:", mainImageUrl)
+
   return (
     <div className="min-h-screen">
       {/* ヘッダー */}
@@ -313,7 +343,7 @@ export function ReceiptDetailContent({ receiptId }: ReceiptDetailContentProps) {
       <div className="grid gap-6 p-4 md:p-6 lg:grid-cols-2 lg:gap-8">
         {/* 左側: 画像プレビュー */}
         <div className="lg:sticky lg:top-24 lg:h-fit">
-          <ReceiptImagePreview imageUrl={receipt.imageUrl ?? "/paper-receipt.png"} />
+          <ReceiptImagePreview imageUrl={mainImageUrl} />
         </div>
 
         {/* 右側: 編集フォーム */}
@@ -332,7 +362,7 @@ export function ReceiptDetailContent({ receiptId }: ReceiptDetailContentProps) {
 
       {/* 下部固定バー */}
       <div className="fixed bottom-0 left-0 right-0 z-10 border-t border-blue-200 bg-white/95 p-4 backdrop-blur shadow-soft-lg md:left-64">
-        <div className="mx-autoflex max-w-4xl items-center justify-between gap-4">
+        <div className="mx-auto flex max-w-4xl items-center justify-between gap-4">
           <Link href="/receipts" className="hidden md:block">
             <Button variant="outline">キャンセル</Button>
           </Link>

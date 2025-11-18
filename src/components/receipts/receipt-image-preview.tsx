@@ -13,6 +13,7 @@ interface ReceiptImagePreviewProps {
 export function ReceiptImagePreview({ imageUrl }: ReceiptImagePreviewProps) {
   const [rotation, setRotation] = useState(0)
   const [zoom, setZoom] = useState(1)
+  console.log("Rendering ReceiptImagePreview with imageUrl:", imageUrl)
 
   const handleRotate = () => {
     setRotation((prev) => (prev + 90) % 360)

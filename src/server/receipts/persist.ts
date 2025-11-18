@@ -15,6 +15,7 @@ export type PersistInput = {
     width?: number
     height?: number
     sha256?: string
+    page?: number // ★ 追加：OCR 側で page 情報を持たせたい場合に対応
   }>
   ocrEngine?: "TESSERACT" | "GOOGLE_DOC_AI" | "AWS_TEXTRACT" | "AZURE_FORM_RECOGNIZER" | "OTHER"
   parser?: string
@@ -23,6 +24,9 @@ export type PersistInput = {
 
   // 呼び出し側から保存時のステータスを指定できる（DRAFT / READY / ERROR など）
   status?: Prisma.ReceiptCreateInput["status"]
+
+  // ★ 追加：代表画像として Receipt.imageUrl に入れたい URL
+  imageUrl?: string | null
 }
 
 /** テキストベース重複指紋（画像指紋と併用推奨） */
@@ -42,6 +46,7 @@ export async function persistReceipt(input: PersistInput) {
     parseVersion,
     taxBreakdown,
     status = "DRAFT", // 呼び出し側から指定がなければ DRAFT
+    imageUrl, // ★ 追加
   } = input
 
   const fp = textFingerprint(rawOcrText)
@@ -49,7 +54,7 @@ export async function persistReceipt(input: PersistInput) {
   // 既存重複チェック（user単位）
   const dup = await prisma.receipt.findFirst({
     where: { userId, fingerprint: fp },
-    select: { id: true, status: true },
+    select: { id: true, status: true, imageUrl: true },
   })
 
   // ========== 既存レシートがある場合はそれを再利用 ==========
@@ -64,6 +69,9 @@ export async function persistReceipt(input: PersistInput) {
       data: {
         // 重複扱いにしたい場合
         status: "DUPLICATE",
+
+        // もし新しい imageUrl が来ていて、まだ imageUrl が空なら更新しておく（任意ロジック）
+        imageUrl: dup.imageUrl ?? imageUrl ?? null,
 
         // 解析メタは最新で上書きしておく
         rawOcrText,
@@ -143,6 +151,12 @@ export async function persistReceipt(input: PersistInput) {
       memo: null,
       status: effectiveStatus,
 
+      // ★ ここで imageUrl を保存する
+      //   1. 呼び出し側から明示的に渡された imageUrl
+      //   2. なければ files[0].url
+      //   3. どちらもなければ null
+      imageUrl: imageUrl ?? (files[0]?.url ?? null),
+
       // 解析メタ
       rawOcrText,
       normalizedJson: JSON.parse(JSON.stringify(base)) as Prisma.InputJsonValue,
@@ -165,7 +179,8 @@ export async function persistReceipt(input: PersistInput) {
       files: files.length
         ? {
             create: files.map((f, idx) => ({
-              page: idx + 1,
+              // ★ Import 側で page が来ていれば優先し、なければ 1,2,3... を採用
+              page: f.page ?? idx + 1,
               url: f.url,
               mimeType: f.mimeType ?? undefined,
               width: f.width ?? undefined,

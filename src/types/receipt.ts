@@ -15,6 +15,20 @@ export interface ReceiptItem {
   amount: number
 }
 
+// Storage に保存されたレシート画像 1 件分
+export interface ReceiptFile {
+  id: string
+  receiptId: string
+  page: number | null
+  url: string
+  mimeType: string | null
+  width: number | null
+  height: number | null
+  sha256: string | null
+  createdAt: string
+  updatedAt: string
+}
+
 export interface Receipt {
   id: string
   userId: string
@@ -48,11 +62,14 @@ export interface Receipt {
   // OCR の信頼度（0〜1）
   confidenceScore?: number
 
-  // 元画像の URL（ある場合のみ）
+  // 既存の単一画像 URL（必要ならそのまま併用）
   imageUrl?: string
 
   // 品目一覧
   items: ReceiptItem[]
+
+  // 添付ファイル一覧（Supabase Storage の画像など）
+  files?: ReceiptFile[]
 
   // カテゴリ ID（任意）
   categoryId?: string

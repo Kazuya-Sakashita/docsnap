@@ -2,6 +2,7 @@
 import { NextResponse } from "next/server"
 import sharp from "sharp"
 import { ImageAnnotatorClient, protos as visionProtos } from "@google-cloud/vision"
+import { createSupabaseServerClientReadonly } from "@/lib/supabase/server"
 
 export const runtime = "nodejs"
 
@@ -9,6 +10,7 @@ export const runtime = "nodejs"
 const MAX_FILE_BYTES = 10 * 1024 * 1024 // 10MB
 const ALLOWED_MIME = new Set(["image/jpeg", "image/png", "image/jpg"])
 const DEFAULT_MODE = "text" as const // "text" | "document"
+const RECEIPT_BUCKET = "receipts" // Supabase Storage のバケット名（作成しておく）
 
 // ---- 型エイリアス ----
 type AnnotateResponse = visionProtos.google.cloud.vision.v1.IAnnotateImageResponse
@@ -17,8 +19,11 @@ type Block = visionProtos.google.cloud.vision.v1.IBlock
 type Vertex = visionProtos.google.cloud.vision.v1.IVertex
 
 // ---- ヘルパー ----
-function bad(status: number, message: string) {
-  return NextResponse.json({ error: message }, { status })
+function bad(status: number, message: string, detail?: unknown) {
+  return NextResponse.json(
+    detail ? { error: message, detail } : { error: message },
+    { status },
+  )
 }
 
 /** ローカル(JSONキー) or Vercel(環境変数) 両対応クライアント */
@@ -114,7 +119,6 @@ function findAmountAfterKeyword(lines: string[], keywords: RegExp[]): number | u
 
 // ==== 店名スコアリング関連ヘルパー ====
 
-// 店名には使いたくないワード
 const STORE_STOP_WORDS =
   /(領収書|レシート|電話|TEL|住所|〒|伝票番号|レジ|#\d+|事業者登録番号|登録番号)/
 
@@ -153,18 +157,14 @@ function scoreStoreLikeLine(line: string): number {
 }
 
 // 店名抽出：ブランド名ハードコードではなく「店名っぽさスコア」で決める
-// 店名抽出：ブランド名ハードコードではなく「店名っぽさスコア」で決める
 function extractStoreName(lines: string[], fullText: string): string {
-  // ★ ヘッダー行を「先頭から STOP_WORD に当たるまで」で切り出す
   const headerLines: string[] = []
   for (const line of lines) {
-    // 領収書 / 電話 / 事業者登録番号 などが出てきたらヘッダー終わり
     if (STORE_STOP_WORDS.test(line)) break
     headerLines.push(line)
-    if (headerLines.length >= 12) break // 念のための上限
+    if (headerLines.length >= 12) break
   }
 
-  // スコア付き候補リストを作成
   const scored = headerLines
     .map((line, idx) => ({
       line,
@@ -175,10 +175,9 @@ function extractStoreName(lines: string[], fullText: string): string {
     .sort((a, b) => b.score - a.score)
 
   if (scored.length === 0) {
-    // どうしても候補がない場合は、STOP_WORD などを除いた最初の行をフォールバックに
     const fallback =
       headerLines.find(
-        (l) => !STORE_STOP_WORDS.test(l) && !isAddressLine(l) && /[^\d\W]/u.test(l), // 何かしら文字を含む
+        (l) => !STORE_STOP_WORDS.test(l) && !isAddressLine(l) && /[^\d\W]/u.test(l),
       ) ||
       lines[0] ||
       ""
@@ -188,7 +187,7 @@ function extractStoreName(lines: string[], fullText: string): string {
   const best = scored[0]
   let name = best.line
 
-  // 直前の行がブランド名っぽいならくっつける（例：LAWSON + 大阪〇〇店）
+  // 直前の行がブランド名っぽいならくっつける
   if (best.idx > 0) {
     const prev = headerLines[best.idx - 1]
     if (
@@ -202,7 +201,6 @@ function extractStoreName(lines: string[], fullText: string): string {
     }
   }
 
-  // 明らかに崩れやすいブランドだけ軽く補正する辞書（現時点のアイデア）
   const BRAND_NORMALIZERS: { pattern: RegExp; canonical: string }[] = [
     { pattern: /SEVEN.?ELEVEN/i, canonical: "セブン-イレブン" },
     { pattern: /STAR.?BUCKS/i, canonical: "スターバックス" },
@@ -210,7 +208,6 @@ function extractStoreName(lines: string[], fullText: string): string {
 
   for (const b of BRAND_NORMALIZERS) {
     if (b.pattern.test(fullText)) {
-      // 例: "SEVENL1IDOLINOs 大阪西今川1丁目店" → "セブン-イレブン 大阪西今川1丁目店"
       if (/店$/.test(name)) {
         const parts = name.split(/\s+/)
         const branch = parts.slice(1).join(" ")
@@ -225,28 +222,23 @@ function extractStoreName(lines: string[], fullText: string): string {
 
 /** レシート向け抽出（店名/日付/合計/税） 改良版 */
 function extractReceiptFields(text: string) {
-  // 行へ分割→正規化
   const lines = text
     .split(/\r?\n/)
     .map((s) => normalize(s))
     .filter(Boolean)
 
-  // ---- 店名 ----
   const storeName = extractStoreName(lines, text)
 
   // ---- 合計金額 ----
-  // まず「総合計 / 合計金額 / お会計 / TOTAL」を優先
   const primaryTotalKeywords = [/総合計/, /合計金額/, /お会計/, /TOTAL/i]
   let total = findAmountAfterKeyword(lines, primaryTotalKeywords)
 
-  // それでも見つからなければ、汎用的な「合計 / 合算」で探す
   if (total == null) {
     const secondaryTotalKeywords = [/合計/, /合算/]
     total = findAmountAfterKeyword(lines, secondaryTotalKeywords)
   }
 
   if (total == null) {
-    // ¥付き最大値を合計と推定（フォールバック）
     const yenAmounts = lines
       .flatMap((l) => [...l.matchAll(/¥\s*([０-９0-9]{1,3}(?:[,\s][０-９0-9]{3})*|[０-９0-9]+)/g)])
       .map((m) => parseAmount(m[1]))
@@ -260,9 +252,8 @@ function extractReceiptFields(text: string) {
   for (let i = 0; i < lines.length; i++) {
     const l = lines[i]
     if (taxKeywords.some((r) => r.test(l))) {
-      if (/%/.test(l)) continue // 8%/10% などはスキップ
+      if (/%/.test(l)) continue
 
-      // この行と次行からすべての数値を抽出
       let candidates = findNumericAmounts(l)
       const next = lines[i + 1]
       if (next && !/%/.test(next)) {
@@ -270,14 +261,13 @@ function extractReceiptFields(text: string) {
       }
 
       if (candidates.length) {
-        // 一番小さい値を税額として採用（多くのレシートで妥当）
         tax = Math.min(...candidates)
         break
       }
     }
   }
 
-  // ---- 日付（2025-10-28 / 2025/10/28 / 2025.10.28 / 2025年10月28日）----
+  // ---- 日付 ----
   let purchaseDate = ""
   {
     const m = lines
@@ -297,27 +287,83 @@ function extractReceiptFields(text: string) {
 // ---- メイン処理 ----
 export async function POST(req: Request) {
   try {
+    // まずは認証ユーザーを取得
+    const supabase = await createSupabaseServerClientReadonly()
+    const { data: authData, error: authError } = await supabase.auth.getUser()
+    if (authError || !authData?.user) {
+      console.error("[/api/ocr] auth error:", authError)
+      return bad(401, "unauthorized", authError?.message)
+    }
+    const supabaseUser = authData.user
+
     const ct = req.headers.get("content-type") || ""
     if (!ct.includes("multipart/form-data"))
       return bad(415, "content-type must be multipart/form-data")
 
     const form = await req.formData()
-    const file = form.get("file") as File | null
-    if (!file) return bad(400, "file is required")
+    const fileEntry = form.get("file")
+
+    // ここで File 型に絞り込む（any 不要＆実行時にも安全）
+    if (!(fileEntry instanceof File)) {
+      return bad(400, "file is required")
+    }
+    const file = fileEntry
+
     if (!ALLOWED_MIME.has(file.type)) return bad(400, "unsupported file type")
     if (file.size > MAX_FILE_BYTES) return bad(400, "file too large (max 10MB)")
 
+    console.log("[/api/ocr] incoming file:", {
+      name: file.name,
+      type: file.type,
+      size: file.size,
+    })
+
     const url = new URL(req.url)
-    const mode = (url.searchParams.get("mode") || DEFAULT_MODE) as "text" | "document"
+    const modeParam = url.searchParams.get("mode") || DEFAULT_MODE
+    const mode = (modeParam === "document" ? "document" : "text") as "text" | "document"
 
     // 画像前処理：傾き補正 + グレースケール + 軽量化 + PNG化
     const buf = Buffer.from(await file.arrayBuffer())
+    console.log("[/api/ocr] original buffer size (bytes):", buf.length)
+
     const preprocessed = await sharp(buf)
       .rotate()
       .grayscale()
       .resize({ width: 1600, withoutEnlargement: true })
       .toFormat("png")
       .toBuffer()
+
+    console.log("[/api/ocr] preprocessed buffer size (bytes):", preprocessed.length)
+
+    // Supabase Storage に保存（ユーザーごとにパスを分ける）
+    const timestamp = Date.now()
+    const storagePath = `${supabaseUser.id}/${timestamp}.png`
+
+    const { error: uploadError } = await supabase.storage
+      .from(RECEIPT_BUCKET)
+      .upload(storagePath, preprocessed, {
+        contentType: "image/png",
+        upsert: false,
+      })
+
+    if (uploadError) {
+      console.error("[/api/ocr] storage upload error:", uploadError)
+      return bad(
+        500,
+        "image upload failed",
+        uploadError.message ??
+          // @ts-expect-error supabase error 型によっては error / status などがある
+          uploadError.error ??
+          String(uploadError),
+      )
+    }
+
+    const {
+      data: { publicUrl },
+    } = supabase.storage.from(RECEIPT_BUCKET).getPublicUrl(storagePath)
+
+    // URL表示
+    console.log("[/api/ocr] publicUrl:", publicUrl)
 
     const client = createVisionClient()
     const image = { content: preprocessed }
@@ -331,7 +377,6 @@ export async function POST(req: Request) {
     const text = result.fullTextAnnotation?.text?.trim() || ""
     const confidence = estimateConfidence(result)
 
-    // ブロック単位の簡易レイアウト（座標 + 文字列）
     const pages = (result.fullTextAnnotation?.pages ?? []) as Page[]
     const blocks = pages.flatMap((p: Page) =>
       (p.blocks ?? []).map((b: Block) => ({
@@ -350,11 +395,24 @@ export async function POST(req: Request) {
     const extracted = extractReceiptFields(text)
 
     console.log("[/api/ocr] extracted:", extracted)
-    console.log("[/api/ocr] raw text:", text)
+    console.log("[/api/ocr] raw text length:", text.length)
+    console.log("[/api/ocr] image stored at:", storagePath)
 
-    return NextResponse.json({ text, confidence, blocks, extracted, mode })
+    return NextResponse.json({
+      text,
+      confidence,
+      blocks,
+      extracted,
+      mode,
+      image: {
+        path: storagePath,
+        url: publicUrl,
+      },
+    })
   } catch (e) {
     console.error("[/api/ocr] Vision error:", e)
-    return bad(500, "Vision API failed")
+    const detail =
+      e instanceof Error ? e.message : typeof e === "string" ? e : JSON.stringify(e)
+    return bad(500, "Vision API failed", detail)
   }
 }

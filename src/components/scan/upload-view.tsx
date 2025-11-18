@@ -3,6 +3,7 @@
 
 import type React from "react"
 import { useState, useRef, useCallback } from "react"
+import imageCompression from "browser-image-compression"
 import { Upload, Camera, ImageIcon, AlertCircle, FileText } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -18,8 +19,11 @@ export interface UploadViewProps {
   onFileSelect: (file: File, selectedMode: OcrMode) => void | Promise<void>
 }
 
-const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10MB
+const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10MB（最終的にこれ以下にしたい）
 const ACCEPTED_TYPES = ["image/jpeg", "image/png", "image/jpg", "application/pdf"]
+
+// 2MB を超える画像はアップロード前に圧縮
+const COMPRESSION_THRESHOLD = 2 * 1024 * 1024 // 2MB
 
 // 任意: モード名の表示ラベル（存在しないキーはフォールバック）
 const modeLabelMap: Partial<Record<OcrMode, string>> = {
@@ -38,47 +42,115 @@ export function UploadView({ defaultMode, modes, onFileSelect }: UploadViewProps
   const [mode, setMode] = useState<OcrMode>(defaultMode)
   const [isDragging, setIsDragging] = useState(false)
   const [error, setError] = useState("")
+  const [compressionLog, setCompressionLog] = useState<{ before: number; after: number } | null>(
+    null,
+  )
   const fileInputRef = useRef<HTMLInputElement>(null)
   const cameraInputRef = useRef<HTMLInputElement>(null)
 
-  const validateFile = useCallback((file: File): boolean => {
+  // タイプだけ先にチェック（サイズは圧縮後にチェックする）
+  const validateFileType = useCallback((file: File): boolean => {
     if (!ACCEPTED_TYPES.includes(file.type)) {
       setError("JPG、PNG、PDF形式のファイルのみ対応しています")
-      return false
-    }
-    if (file.size > MAX_FILE_SIZE) {
-      setError("ファイルサイズは10MB以下にしてください")
       return false
     }
     return true
   }, [])
 
-  const handleSelected = useCallback(
-    (file: File) => {
-      if (!validateFile(file)) return
-      setError("")
-      void onFileSelect(file, mode)
+  // 必要に応じて画像を圧縮（PDF はそのまま）
+  const compressImageIfNeeded = useCallback(
+    async (file: File): Promise<File> => {
+      // 画像以外（PDFなど）は圧縮しない
+      if (!file.type.startsWith("image/")) {
+        setCompressionLog(null)
+        return file
+      }
+
+      // 2MB 以下ならそのまま
+      if (file.size <= COMPRESSION_THRESHOLD) {
+        setCompressionLog(null)
+        return file
+      }
+
+      try {
+        const compressedBlob = await imageCompression(file, {
+          maxSizeMB: 2, // 上限 2MB を目安に圧縮
+          maxWidthOrHeight: 2000, // 長辺 2000px くらいに制限
+          useWebWorker: true,
+        })
+
+        const compressedFile = new File([compressedBlob], file.name, {
+          type: compressedBlob.type || file.type,
+          lastModified: Date.now(),
+        })
+
+        console.log(
+          "[UploadView] compressed:",
+          `${(file.size / 1024 / 1024).toFixed(2)}MB -> ${(compressedFile.size / 1024 / 1024).toFixed(2)}MB`,
+        )
+
+        setCompressionLog({
+          before: file.size,
+          after: compressedFile.size,
+        })
+
+        return compressedFile
+      } catch (err) {
+        console.error("[UploadView] image compression failed, use original file", err)
+        // 圧縮に失敗した場合は元のファイルをそのまま使う
+        setCompressionLog(null)
+        return file
+      }
     },
-    [mode, onFileSelect, validateFile],
+    [],
+  )
+
+  const handleSelected = useCallback(
+    async (file: File) => {
+      // 1. タイプチェック
+      if (!validateFileType(file)) return
+
+      setError("")
+
+      // 2. 画像ならアップロード前に圧縮
+      const finalFile = await compressImageIfNeeded(file)
+
+      // 3. 圧縮後のサイズをチェック（サーバー側の制限と合わせる）
+      if (finalFile.size > MAX_FILE_SIZE) {
+        setError("ファイルサイズは10MB以下にしてください")
+        return
+      }
+
+      // 4. 親コンポーネントへ渡す
+      void onFileSelect(finalFile, mode)
+    },
+    [compressImageIfNeeded, mode, onFileSelect, validateFileType],
   )
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
-    if (file) handleSelected(file)
+    if (file) {
+      void handleSelected(file)
+      // 同じファイルを再選択できるようにリセット
+      e.target.value = ""
+    }
   }
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault()
     setIsDragging(false)
     const file = e.dataTransfer.files?.[0]
-    if (file) handleSelected(file)
+    if (file) void handleSelected(file)
   }
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault()
     setIsDragging(true)
   }
+
   const handleDragLeave = () => setIsDragging(false)
+
+  const formatMB = (bytes: number) => (bytes / 1024 / 1024).toFixed(2)
 
   return (
     <div className="flex min-h-[calc(100vh-5rem)] items-center justify-center p-4">
@@ -123,6 +195,18 @@ export function UploadView({ defaultMode, modes, onFileSelect }: UploadViewProps
           <Alert variant="destructive">
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+
+        {/* 圧縮ログ表示 */}
+        {compressionLog && !error && (
+          <Alert variant="default" className="border-blue-200 bg-blue-50/70">
+            <AlertDescription className="text-sm text-slate-700">
+              画像を圧縮しました：
+              <span className="ml-1 font-mono">
+                {formatMB(compressionLog.before)}MB → {formatMB(compressionLog.after)}MB
+              </span>
+            </AlertDescription>
           </Alert>
         )}
 

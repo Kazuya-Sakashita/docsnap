@@ -41,6 +41,17 @@ type OcrWithText = OcrResponse & {
   text?: string
 }
 
+// /api/ocr が返してくる image を表す補助型
+type OcrImage = {
+  url?: string | null
+  path?: string | null
+  mimeType?: string | null
+  width?: number | null
+  height?: number | null
+  sha256?: string | null
+  page?: number | null
+}
+
 type ScanStep = "upload" | "processing" | "complete" | "error"
 
 function getErrorMessage(err: unknown): string {
@@ -123,11 +134,29 @@ export function ScanContent() {
         // 1. OCR 実行
         const ocr = await runOcr(file, selectedMode)
 
-        // 2. OCR結果からテキストと extracted を取り出す
-        const withText: OcrWithText = ocr
-        const shallowFromOcr: OcrResultShallow = ocr as OcrResultShallow
+        // 2. OCR結果からテキストと extracted / image を取り出す
+        const withText: OcrWithText & { image?: OcrImage } = ocr as OcrWithText & {
+          image?: OcrImage
+        }
+        const shallowFromOcr: OcrResultShallow & { image?: OcrImage } =
+          ocr as OcrResultShallow & { image?: OcrImage }
 
         const rawOcrText = withText.rawOcrText ?? withText.text ?? ""
+
+        // /api/ocr のレスポンスの image を Import 用に整形
+        const imageForImport =
+          withText.image?.url != null
+            ? {
+                url: withText.image.url,
+                mimeType: withText.image.mimeType ?? file.type ?? "image/png",
+                width: withText.image.width ?? undefined,
+                height: withText.image.height ?? undefined,
+                sha256: withText.image.sha256 ?? undefined,
+                page: withText.image.page ?? 1,
+              }
+            : undefined
+
+        console.log("[ScanContent] imageForImport:", imageForImport)
 
         // 3. /api/receipts/import に POST（ドラフトとして保存）
         const res = await fetch("/api/receipts/import", {
@@ -135,8 +164,9 @@ export function ScanContent() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             rawOcrText,
-            extracted: shallowFromOcr.extracted, // ★ OCR側で計算したサマリを渡す
-            // 必要があればここで files, ocrEngine, parser なども渡す
+            extracted: shallowFromOcr.extracted, // OCR 側で計算したサマリ
+            image: imageForImport, // ★ ここで /api/ocr の image をそのまま渡す
+            // 必要に応じて ocrEngine, parser なども追加可能
           }),
         })
 
@@ -186,8 +216,6 @@ export function ScanContent() {
     const summary = extractSummary(ocrResult)
     const receiptId = extractReceiptId(ocrResult)
 
-    // CompletionView は receiptId と summary を受け取り、
-    // ユーザーが「詳細を確認」押下時に /receipts/[id]/edit へ遷移する想定
     return <CompletionView receiptId={receiptId} summary={summary} onStartOver={handleStartOver} />
   }
 
