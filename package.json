@@ -15,6 +15,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "prepare": "husky",
+    "postinstall": "prisma generate",
     "setup:ocr": "mkdir -p public/tessdata && curl -L -o public/tessdata/eng.traineddata https://github.com/tesseract-ocr/tessdata_best/raw/main/eng.traineddata && curl -L -o public/tessdata/jpn.traineddata https://github.com/tesseract-ocr/tessdata_best/raw/main/jpn.traineddata"
   },
   "dependencies": {
