@@ -69,3 +69,6 @@ temp/
 headers.txt
 jar.txt
 before.jar
+
+/prisma/generated/
+/node_modules/.prisma/
