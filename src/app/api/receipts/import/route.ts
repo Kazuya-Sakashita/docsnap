@@ -265,11 +265,22 @@ function scoreItemName(line: string): number {
 function isItemNameCandidate(line: string): boolean {
   const s = line.trim()
   if (!s) return false
+
+  // 金額・小計・合計などは除外
   if (/(小計|合計|総合計|税|円|JPY|領収書|お買上明細)/.test(s)) return false
   if (isPriceLine(s)) return false
+
+  // ★ 店舗名っぽい行は除外（ここを追加）
+  //   - 行末が「店」
+  //   - 会社・支店など
+  if (/(株式会社|有限会社|支店|本店|支社|営業所|店$)/.test(s)) return false
+
+  // 文字種チェック
   if (!/[A-Za-z一-龠々ァ-ヶーぁ-ん]/.test(s)) return false
+
   return scoreItemName(s) > 0
 }
+
 
 function extractItemsFromText(rawText: string, grandTotal?: number): ParsedItem[] {
   const lines = rawText
@@ -369,7 +380,7 @@ function extractItemsFromText(rawText: string, grandTotal?: number): ParsedItem[
 
   // 1件も取れなかった場合のみ、合計金額 1 行だけのフォールバック
   if (!items.length && grandTotal != null && grandTotal > 0) {
-    const fallbackName = zone.find((l) => isItemNameCandidate(l)) || "不明な品目"
+    const fallbackName =  [...zone].reverse().find((l) => isItemNameCandidate(l)) || "不明な品目"
 
     items.push({
       name: fallbackName,
