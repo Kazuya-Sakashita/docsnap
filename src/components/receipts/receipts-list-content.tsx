@@ -1,7 +1,8 @@
 // src/components/receipts/receipts-list-content.tsx
 "use client"
 
-import { useState } from "react"
+import { useMemo, useState } from "react"
+import useSWR from "swr"
 import { Search, SlidersHorizontal, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -13,97 +14,6 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import type { Receipt } from "@/types/receipt"
 
-// ダミーデータ
-const dummyReceipts: Receipt[] = [
-  {
-    id: "1",
-    userId: "user1",
-    type: "RECEIPT",
-    title: "スーパーマーケット",
-    storeName: "イオン",
-    purchaseDate: "2025-02-01",
-    currency: "JPY",
-    subtotal: 4500,
-    tax: 450,
-    total: 4950,
-    status: "READY",
-    items: [],
-    categoryId: "cat1",
-    createdAt: "2025-02-01T10:30:00Z",
-    updatedAt: "2025-02-01T10:30:00Z",
-  },
-  {
-    id: "2",
-    userId: "user1",
-    type: "RECEIPT",
-    title: "コンビニ",
-    storeName: "セブンイレブン",
-    purchaseDate: "2025-01-31",
-    currency: "JPY",
-    subtotal: 800,
-    tax: 80,
-    total: 880,
-    status: "READY",
-    items: [],
-    categoryId: "cat2",
-    createdAt: "2025-01-31T18:20:00Z",
-    updatedAt: "2025-01-31T18:20:00Z",
-  },
-  {
-    id: "3",
-    userId: "user1",
-    type: "INVOICE",
-    title: "業務委託費",
-    storeName: "株式会社ABC",
-    purchaseDate: "2025-01-30",
-    currency: "JPY",
-    subtotal: 50000,
-    tax: 5000,
-    total: 55000,
-    status: "READY",
-    items: [],
-    invoiceNumber: "INV-2025-001",
-    recipientName: "株式会社XYZ 御中",
-    purpose: "業務委託費として",
-    createdAt: "2025-01-30T14:15:00Z",
-    updatedAt: "2025-01-30T14:15:00Z",
-  },
-  {
-    id: "4",
-    userId: "user1",
-    type: "RECEIPT",
-    title: "レストラン",
-    storeName: "ガスト",
-    purchaseDate: "2025-01-29",
-    currency: "JPY",
-    subtotal: 3200,
-    tax: 320,
-    total: 3520,
-    status: "READY",
-    items: [],
-    categoryId: "cat3",
-    createdAt: "2025-01-29T19:45:00Z",
-    updatedAt: "2025-01-29T19:45:00Z",
-  },
-  {
-    id: "5",
-    userId: "user1",
-    type: "INVOICE",
-    title: "会議室利用料",
-    storeName: "ビジネスセンター東京",
-    purchaseDate: "2025-01-28",
-    currency: "JPY",
-    subtotal: 8000,
-    tax: 800,
-    total: 8800,
-    status: "READY",
-    items: [],
-    invoiceNumber: "R-20250128-001",
-    createdAt: "2025-01-28T16:00:00Z",
-    updatedAt: "2025-01-28T16:00:00Z",
-  },
-]
-
 export interface ReceiptsFilterState {
   dateFrom: string
   dateTo: string
@@ -114,10 +24,27 @@ export interface ReceiptsFilterState {
   type?: string
 }
 
+// 共通 fetcher
+const fetcher = (url: string) =>
+  fetch(url).then((res) => {
+    if (!res.ok) {
+      throw new Error(`Failed to fetch: ${res.status}`)
+    }
+    return res.json()
+  })
+
 export function ReceiptsListContent() {
+  // --- Supabase(API) からレシート取得 ---
+  // 別途 /api/receipts の実装が必要です
+const {
+  data: receiptsData,
+  isLoading,
+  error,
+} = useSWR<Receipt[]>("/api/receipts", fetcher)
+
+const receipts = useMemo(() => receiptsData ?? [], [receiptsData])
+
   const [searchQuery, setSearchQuery] = useState("")
-  const [isLoading, _setIsLoading] = useState(false) // 未使用setterは先頭にアンダースコア
-  const [receipts, _setReceipts] = useState<Receipt[]>(dummyReceipts) // 同上
   const [selectedReceiptId, setSelectedReceiptId] = useState<string | null>(null)
   const [sortBy, setSortBy] = useState<"date" | "amount" | "updated">("date")
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc")
@@ -130,65 +57,6 @@ export function ReceiptsListContent() {
     status: "",
     type: "",
   })
-
-  // フィルタリングとソート
-  const filteredReceipts = receipts
-    .filter((receipt) => {
-      // 検索クエリ
-      if (searchQuery) {
-        const query = searchQuery.toLowerCase()
-        if (
-          !receipt.storeName.toLowerCase().includes(query) &&
-          !receipt.title.toLowerCase().includes(query) &&
-          !(receipt.memo || "").toLowerCase().includes(query)
-        ) {
-          return false
-        }
-      }
-
-      if (filters.type && filters.type !== "all" && receipt.type !== filters.type) {
-        return false
-      }
-
-      // 日付範囲
-      if (filters.dateFrom && receipt.purchaseDate < filters.dateFrom) {
-        return false
-      }
-      if (filters.dateTo && receipt.purchaseDate > filters.dateTo) {
-        return false
-      }
-
-      // カテゴリ
-      if (filters.categoryId && receipt.categoryId !== filters.categoryId) {
-        return false
-      }
-
-      // 金額範囲
-      if (filters.minAmount && receipt.total < Number(filters.minAmount)) {
-        return false
-      }
-      if (filters.maxAmount && receipt.total > Number(filters.maxAmount)) {
-        return false
-      }
-
-      // ステータス
-      if (filters.status && receipt.status !== filters.status) {
-        return false
-      }
-
-      return true
-    })
-    .sort((a, b) => {
-      let comparison = 0
-      if (sortBy === "date") {
-        comparison = a.purchaseDate.localeCompare(b.purchaseDate)
-      } else if (sortBy === "amount") {
-        comparison = a.total - b.total
-      } else if (sortBy === "updated") {
-        comparison = a.updatedAt.localeCompare(b.updatedAt)
-      }
-      return sortOrder === "asc" ? comparison : -comparison
-    })
 
   const handleClearFilters = () => {
     setFilters({
@@ -213,10 +81,82 @@ export function ReceiptsListContent() {
     filters.status ||
     filters.type
 
+  // --- フィルタリングとソート ---
+  const filteredReceipts = useMemo(() => {
+    return receipts
+      .filter((receipt) => {
+        // 検索クエリ
+        if (searchQuery) {
+          const query = searchQuery.toLowerCase()
+          if (
+            !receipt.storeName.toLowerCase().includes(query) &&
+            !receipt.title.toLowerCase().includes(query) &&
+            !(receipt.memo || "").toLowerCase().includes(query)
+          ) {
+            return false
+          }
+        }
+
+        if (filters.type && filters.type !== "all" && receipt.type !== filters.type) {
+          return false
+        }
+
+        // 日付範囲
+        if (filters.dateFrom && receipt.purchaseDate < filters.dateFrom) {
+          return false
+        }
+        if (filters.dateTo && receipt.purchaseDate > filters.dateTo) {
+          return false
+        }
+
+        // カテゴリ
+        if (filters.categoryId && receipt.categoryId !== filters.categoryId) {
+          return false
+        }
+
+        // 金額範囲
+        if (filters.minAmount && receipt.total < Number(filters.minAmount)) {
+          return false
+        }
+        if (filters.maxAmount && receipt.total > Number(filters.maxAmount)) {
+          return false
+        }
+
+        // ステータス
+        if (filters.status && receipt.status !== filters.status) {
+          return false
+        }
+
+        return true
+      })
+      .sort((a, b) => {
+        let comparison = 0
+        if (sortBy === "date") {
+          comparison = a.purchaseDate.localeCompare(b.purchaseDate)
+        } else if (sortBy === "amount") {
+          comparison = a.total - b.total
+        } else if (sortBy === "updated") {
+          comparison = a.updatedAt.localeCompare(b.updatedAt)
+        }
+        return sortOrder === "asc" ? comparison : -comparison
+      })
+  }, [receipts, searchQuery, filters, sortBy, sortOrder])
+
   const selectedReceipt = receipts.find((r) => r.id === selectedReceiptId)
 
+  // --- ローディング & エラー ---
   if (isLoading) {
     return <ReceiptsListSkeleton />
+  }
+
+  if (error) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <div className="text-center text-sm text-red-600">
+          レシートの取得に失敗しました。時間をおいて再度お試しください。
+        </div>
+      </div>
+    )
   }
 
   return (
